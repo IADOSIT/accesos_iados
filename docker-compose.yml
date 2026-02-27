@@ -4,7 +4,6 @@ services:
   backend:
     build: ./backend
     container_name: iados-api
-    platform: linux/arm64
     ports:
       - "3004:3001"
     restart: always
@@ -19,7 +18,6 @@ services:
   frontend:
     build: ./frontend
     container_name: iados-web
-    platform: linux/arm64
     ports:
       - "3005:3002"
     depends_on:
