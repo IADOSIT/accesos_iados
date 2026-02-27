@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: iados-api
+    platform: linux/arm64 # Correcto para tu chip M3
+    ports:
+      - "3004:3001" # Mapeo: Host(3004) -> Contenedor(3001)
+    env_file:
+      - ./backend/.env
+    restart: always
+    networks:
+      - web_network
+    healthcheck:
+      # IMPORTANTE: Dentro del contenedor usamos el puerto 3001
+      test: [ "CMD", "curl", "-f", "http://localhost:3001/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build: ./frontend
+    container_name: iados-web
+    platform: linux/arm64
+    ports:
+      - "3005:3002"
+    env_file:
+      - ./frontend/.env
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: always
+    networks:
+      - web_network
+
+networks:
+  web_network:
+    external: true
