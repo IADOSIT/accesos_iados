@@ -6,6 +6,18 @@ services:
     container_name: iados-api
     ports:
       - "3004:3001"
+    environment:
+      - DATABASE_URL=postgresql://usuario:password@host:5432/porton_digital?sslmode=require
+      - JWT_SECRET=cambiar-en-produccion-clave-segura-min-32-chars
+      - JWT_EXPIRES_IN=24h
+      - JWT_REFRESH_EXPIRES_IN=7d
+      - PORT=3001
+      - NODE_ENV=development
+      - FRONTEND_URL=http://localhost:3005
+      - MQTT_BROKER_URL=mqtt://broker-url:1883
+      - MQTT_USERNAME=
+      - MQTT_PASSWORD=
+      - ACCESS_COOLDOWN_SECONDS=30
     restart: always
     networks:
       - web_network
@@ -20,6 +32,8 @@ services:
     container_name: iados-web
     ports:
       - "3005:3002"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:3004/api
     depends_on:
       backend:
         condition: service_healthy
