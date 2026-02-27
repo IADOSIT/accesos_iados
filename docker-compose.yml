@@ -4,16 +4,17 @@ services:
   backend:
     build: ./backend
     container_name: iados-api
-    platform: linux/arm64 # Correcto para tu chip M3
+    platform: linux/arm64
     ports:
-      - "3004:3001" # Mapeo: Host(3004) -> Contenedor(3001)
+      - "3004:3001"
+    # OPCIÓN RECOMENDADA: Define las variables directamente en la UI de Portainer
+    # o usa una sola ruta plana si logras subir el archivo:
     env_file:
-      - ./backend/.env
+      - stack.env 
     restart: always
     networks:
       - web_network
     healthcheck:
-      # IMPORTANTE: Dentro del contenedor usamos el puerto 3001
       test: [ "CMD", "curl", "-f", "http://localhost:3001/health" ]
       interval: 30s
       timeout: 10s
@@ -26,7 +27,7 @@ services:
     ports:
       - "3005:3002"
     env_file:
-      - ./frontend/.env
+      - stack.env
     depends_on:
       backend:
         condition: service_healthy
