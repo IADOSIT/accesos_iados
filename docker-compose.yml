@@ -7,10 +7,7 @@ services:
     platform: linux/arm64
     ports:
       - "3004:3001"
-    # OPCIÓN RECOMENDADA: Define las variables directamente en la UI de Portainer
-    # o usa una sola ruta plana si logras subir el archivo:
-    env_file:
-      - stack.env 
+    # ELIMINA LA LÍNEA DE env_file
     restart: always
     networks:
       - web_network
@@ -26,8 +23,7 @@ services:
     platform: linux/arm64
     ports:
       - "3005:3002"
-    env_file:
-      - stack.env
+    # ELIMINA LA LÍNEA DE env_file
     depends_on:
       backend:
         condition: service_healthy
