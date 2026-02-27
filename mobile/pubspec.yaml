@@ -1,0 +1,61 @@
+name: acceso_digital
+description: "Acceso Digital - iaDoS | Control de Accesos Multitenant"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Navigation
+  go_router: ^14.8.1
+
+  # HTTP
+  dio: ^5.8.0+1
+
+  # Storage seguro (JWT)
+  flutter_secure_storage: ^9.2.4
+
+  # Preferencias locales
+  shared_preferences: ^2.5.3
+
+  # Tipografía
+  google_fonts: ^6.2.1
+
+  # Formateo fechas / moneda
+  intl: ^0.20.2
+
+  # Animaciones
+  animate_do: ^3.3.4
+
+  # Shimmer loading
+  shimmer: ^3.0.0
+
+  # QR rendering
+  qr_flutter: ^4.1.0
+
+  # Share nativo del OS
+  share_plus: ^7.2.1
+
+  # Abrir URLs en browser
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.15
+  riverpod_generator: ^2.6.5
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/

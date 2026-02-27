@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx prisma generate)",
+      "Bash(node -e:*)",
+      "Bash(npx prisma db push:*)",
+      "Bash(npm run dev:*)",
+      "Bash(ls:*)",
+      "WebFetch(domain:iados.mx)",
+      "Bash(wc:*)",
+      "Bash(cd /c/sites/accesos_iados && flutter create mobile --org mx.iados --project-name acceso_digital --platforms android,ios 2>&1)",
+      "Bash(cmd:*)",
+      "Bash(cd /c/sites/accesos_iados && /c/flutter/bin/flutter.bat create mobile --org mx.iados --project-name acceso_digital --platforms android,ios 2>&1)",
+      "Bash(cd /c/sites/accesos_iados/mobile && /c/flutter/bin/flutter.bat pub get 2>&1)",
+      "Bash(/c/flutter/bin/flutter.bat emulators:*)",
+      "Bash(/c/flutter/bin/flutter.bat devices:*)",
+      "Bash(cd /c/sites/accesos_iados/mobile && /c/flutter/bin/flutter.bat run -d chrome 2>&1)",
+      "Bash(curl:*)",
+      "Bash(cd /c/sites/accesos_iados/mobile && /c/flutter/bin/flutter.bat clean 2>&1)",
+      "Bash(echo DONE:*)",
+      "Bash(cd /c/sites/accesos_iados/mobile && /c/flutter/bin/flutter.bat analyze 2>&1)",
+      "Bash(head:*)",
+      "Bash(cd /c/sites/accesos_iados/mobile && /c/flutter/bin/flutter.bat create . --platforms web 2>&1)",
+      "Bash(python3:*)",
+      "Bash(node:*)",
+      "Bash(flutter:*)",
+      "Bash(netstat:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(C:/flutter/bin/flutter.bat pub:*)",
+      "Bash(C:/flutter/bin/flutter.bat build:*)"
+    ]
+  }
+}

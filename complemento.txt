@@ -1,0 +1,201 @@
+
+> Nota: lo redacté para que Claude lo use como “continuación” del prompt anterior, sin contradecirlo.
+
+---
+
+## Prompt complemento (Claude Code) — Módulo Cámaras + Integraciones (multitenant, escalable)
+
+Eres un **arquitecto + lead full-stack**. Estás ampliando el proyecto existente **Portón Digital – iaDoS** (web + app iOS/Android) que ya tiene: arquitectura separada **backend/frontend**, BD **PostgreSQL externa**, y operación **multitenant** (cada Empresa es un tenant aislado). Ahora debes **diseñar e implementar** el **módulo de Cámaras** y un **framework de Integraciones** con equipos del mercado (incluye ERREKA VIVO-M203M y otros).
+
+### 0) Reglas obligatorias (no negociables)
+
+* Todo es **multitenant**: cada tabla/consulta/evento debe filtrar por `empresa_id` (o RLS si aplica).
+* Debe ser **escalable**: soportar muchas empresas, múltiples sitios por empresa, y **100+ cámaras** por empresa.
+* Arquitectura **modular**: “Integrations Hub” con conectores/adapter pattern (plug-ins).
+* Backend expone API segura (JWT + roles) y eventos; frontend web y apps consumen esas APIs.
+* No guardar video pesado en Postgres: solo **metadatos + URLs**; el video/imagenes van a storage (S3 compatible o NVR/VMS externo).
+
+---
+
+# 1) Módulo Cámaras (funcionalidad)
+
+## 1.1 Casos de uso
+
+1. **Live View** (tiempo real) por cámara o mosaico por zona.
+2. **Evidencia por evento de acceso**: en cada acceso (apertura/denegación/alarma) generar:
+
+   * snapshot
+   * clip corto (configurable, ej. 5s antes + 10s después)
+3. **Historial**: buscar por rango de fechas, usuario, puerta, estado, cámara.
+4. **Estado**: online/offline/latencia, últimos frames, salud del stream.
+5. **PTZ** (si aplica): controles básicos.
+6. **Privacidad/roles**: seguridad puede ver, residente tal vez solo su puerta (si aplica).
+
+## 1.2 Protocolos base y compatibilidad mínima (mercado)
+
+* **ONVIF** para descubrimiento, control y eventos (perfil S/T como mínimo). ([ONVIF][1])
+* **RTSP** para streaming en vivo (ingesta).
+* Para marcas con APIs propietarias, soportar adaptadores opcionales:
+
+  * **Axis VAPIX** (control/snapshot/config). ([Axis Developer][2])
+  * **Hikvision ISAPI** (snapshot/stream/eventos según modelo). ([IP Cam Talk][3])
+
+## 1.3 Streaming para móviles (iOS/Android)
+
+* RTSP no siempre es amigable para móvil → implementar **transcodificación/relay a HLS** (o WebRTC si se requiere baja latencia).
+* Debe ser **seguro**: URL firmada con expiración corta (token temporal), y validación tenant/roles.
+
+---
+
+# 2) Integrations Hub (multi-integración de equipos)
+
+Implementa un **framework de integraciones** basado en conectores:
+
+## 2.1 Modelo conceptual
+
+* `integraciones` (definición): tipo, marca, versión, credenciales, configuración.
+* `dispositivos` (instancias): cada gate controller, panel, cámara, intercom, LPR, etc.
+* `capabilities` (capacidades): abrir/cerrar, leer estado, disparar snapshot, recibir eventos, etc.
+* `eventos_integracion`: eventos normalizados (telemetría, alarmas, accesos, salud).
+
+## 2.2 Patrón técnico (obligatorio)
+
+* Crear una interfaz `IntegrationDriver` con métodos estándar:
+
+  * `provision()`, `healthCheck()`, `executeCommand(cmd)`, `subscribeEvents()`
+* Implementar `DriverRegistry` para cargar drivers por tipo/marca:
+
+  * `camera.onvif`, `camera.axis_vapix`, `camera.hikvision_isapi`
+  * `gate.erreka_io`, `access.osdp_panel`, `access.cloud_alta`, etc.
+* Aislar drivers en módulos y usar **colas/event bus** para:
+
+  * reintentos
+  * buffering de eventos
+  * evitar que una integración lenta bloquee el sistema
+
+---
+
+# 3) ERREKA VIVO-M203M (integración en este sistema)
+
+Objetivo: integrar control de portón con ERREKA **de forma robusta** y multitenant.
+
+## 3.1 Modelo de integración recomendado
+
+* **Modo 1 (principal, universal): I/O por relé / contacto seco**
+
+  * Comando: pulso de apertura / cierre / stop (según configuración)
+  * Entradas: estado de puerta (abierta/cerrada), fotocelda/obstáculo, fallo
+  * Ventaja: funciona aunque no exista API IP.
+* **Modo 2 (si existe módulo de comunicaciones disponible en sitio):**
+
+  * Integración por módulo de comunicaciones/telemetría (si el hardware lo permite)
+* El manual/guía y módulos de comunicaciones existen como parte del ecosistema del cuadro. ([ERREKA Connected Access][4])
+
+## 3.2 Normalización de eventos
+
+Normaliza ERREKA a eventos del dominio:
+
+* `GATE_OPEN_REQUESTED`, `GATE_OPENED`, `GATE_CLOSED`, `GATE_OBSTACLE`, `GATE_FAULT`
+  y linkearlo a `accesos` cuando aplique.
+
+---
+
+# 4) Integraciones de mercado a contemplar (para roadmap y diseño)
+
+Diseña el hub para soportar estas familias:
+
+## 4.1 Cámaras IP (vendor-agnostic)
+
+* **ONVIF + RTSP** como base universal. ([ONVIF][1])
+
+## 4.2 VMS (Video Management Systems) empresariales
+
+* **Milestone XProtect** vía **MIP SDK/APIs**. ([doc.developer.milestonesys.com][5])
+* **Genetec Security Center** vía **SDK** (requiere programa/partner). ([genetec.com][6])
+* **Nx Witness / Network Optix** vía **HTTP REST API** e integraciones. ([support.networkoptix.com][7])
+
+## 4.3 Control de acceso (protocolos y hardware)
+
+* **OSDP (RS-485)** como estándar moderno supervisado (preferible a Wiegand). ([Security Industry Association][8])
+* **Wiegand** (compatibilidad legacy) para lectores/paneles existentes. ([hikvision.com][9])
+* **Mercury (LP series)** como plataforma de controladores muy extendida en integraciones. ([Mercury Security][10])
+
+## 4.4 Control de acceso cloud (APIs)
+
+* **Avigilon Alta (Openpath)** vía API para sincronización de credenciales/lectores/eventos. ([support.avigilon.com][11])
+
+*(Opcional para roadmap: intercoms IP y doorphones; el hub debe permitirlo aunque no se implemente ahora.)*
+
+---
+
+# 5) Data model (PostgreSQL) — tablas mínimas nuevas
+
+Crear migraciones multitenant:
+
+* `camaras`
+* `camara_streams` (rtsp/hls/webrtc endpoints, flags)
+* `camara_eventos` (snapshot_url, clip_url, acceso_id, tipo_evento)
+* `integraciones`
+* `dispositivos`
+* `dispositivo_eventos`
+* `dispositivo_comandos` (outbox/command log)
+* `salud_dispositivos` (last_seen, latency_ms, estado)
+
+Índices recomendados por tenant:
+
+* `(empresa_id, created_at)` en eventos
+* `(empresa_id, camara_id, created_at)`
+* `(empresa_id, dispositivo_id, created_at)`
+
+---
+
+# 6) APIs (backend) a entregar
+
+Endpoints REST/JSON:
+
+* `GET /camaras` `POST /camaras` `PATCH /camaras/:id`
+* `GET /camaras/:id/live` (regresa URL firmada HLS/WebRTC)
+* `GET /camaras/eventos` (filtros por fecha/usuario/puerta)
+* `POST /integraciones` `POST /dispositivos`
+* `POST /dispositivos/:id/comandos` (abrir portón, etc.)
+* `GET /dispositivos/:id/salud`
+
+Seguridad:
+
+* JWT + roles (Admin, Seguridad, Operador)
+* Validación estricta tenant en cada request.
+
+---
+
+# 7) Frontend (web) + Apps (iOS/Android): UX profesional e intuitiva
+
+## 7.1 Principios UX
+
+* Navegación por **Sitio → Puerta/Zona → Cámaras/Accesos**
+* **Live view** rápido (1 toque)
+* En historial de accesos: tarjeta con foto + estado + abrir clip
+* Offline handling: mostrar estado y reintentar
+* Diseño consistente, “enterprise”, rápido, con skeleton loading
+
+## 7.2 Requisitos de app
+
+* Android/iOS: pantallas nativas o RN/Flutter (según stack ya definido en el prompt anterior), pero el consumo debe ser **dinámico** (configurable por tenant) y con **caching** para eventos recientes.
+* Notificaciones push: acceso forzado, fallo de puerta, cámara offline.
+
+---
+
+# 8) Entregables que debes producir ahora
+
+1. Arquitectura del Integrations Hub (diagrama lógico + módulos).
+2. Esquema DB + migraciones.
+3. Contratos de API (OpenAPI recomendado).
+4. Implementación inicial de drivers:
+
+   * `camera.onvif` (descubrimiento + snapshot si posible + RTSP)
+   * `gate.erreka_io` (comando por relay + lectura de estado por inputs si existe)
+5. UI/UX wireflow para Web + App (mínimo 5 pantallas clave).
+6. Plan de escalabilidad y observabilidad:
+
+   * logs por tenant, métricas, health checks, rate limiting.
+
+---

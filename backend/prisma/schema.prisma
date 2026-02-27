@@ -1,0 +1,376 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================
+// TENANT (Empresa / Fraccionamiento)
+// =============================================
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  address   String?
+  phone     String?
+  email     String?
+  logo      String?
+  isActive  Boolean  @default(true)
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users              UserTenant[]
+  units              Unit[]
+  devices            Device[]
+  accessLogs         AccessLog[]
+  payments           Payment[]
+  charges            Charge[]
+  qrCodes            QRCode[]
+  auditLogs          AuditLog[]
+  integrationConfigs IntegrationConfig[]
+
+  @@map("tenants")
+}
+
+// =============================================
+// USUARIO
+// =============================================
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  phone        String?
+  avatarUrl    String?
+  isActive     Boolean  @default(true)
+  isSuperAdmin Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenants     UserTenant[]
+  accessLogs  AccessLog[]
+  qrCodes     QRCode[]
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
+// =============================================
+// RELACION USUARIO-TENANT (Roles por tenant)
+// =============================================
+enum Role {
+  ADMIN
+  GUARD
+  RESIDENT
+}
+
+model UserTenant {
+  id       String  @id @default(uuid())
+  userId   String
+  tenantId String
+  role     Role
+  isActive Boolean @default(true)
+  unitId   String?
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit   Unit?   @relation(fields: [unitId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, tenantId])
+  @@index([tenantId, role])
+  @@index([tenantId, userId])
+  @@map("user_tenants")
+}
+
+// =============================================
+// UNIDAD (Casa / Departamento)
+// =============================================
+model Unit {
+  id          String  @id @default(uuid())
+  tenantId    String
+  identifier  String
+  block       String?
+  floor       String?
+  ownerName   String?
+  ownerPhone  String?
+  ownerEmail  String?
+  isActive    Boolean @default(true)
+  isDelinquent Boolean @default(false)
+
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  residents  UserTenant[]
+  accessLogs AccessLog[]
+  payments   Payment[]
+  charges    Charge[]
+  qrCodes    QRCode[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, identifier])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, isDelinquent])
+  @@map("units")
+}
+
+// =============================================
+// DISPOSITIVO (Portón / Puerta / Pluma)
+// =============================================
+enum DeviceType {
+  GATE
+  DOOR
+  BARRIER
+}
+
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  ERROR
+}
+
+model Device {
+  id          String       @id @default(uuid())
+  tenantId    String
+  name        String
+  type        DeviceType   @default(GATE)
+  status      DeviceStatus @default(OFFLINE)
+  mqttTopic   String?
+  location    String?
+  isActive    Boolean      @default(true)
+  lastPing    DateTime?
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  accessLogs AccessLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@map("devices")
+}
+
+// =============================================
+// BITACORA DE ACCESOS
+// =============================================
+enum AccessMethod {
+  APP
+  QR
+  GUARD_OVERRIDE
+  REMOTE
+  EXIT_SENSOR
+}
+
+enum AccessDirection {
+  ENTRY
+  EXIT
+}
+
+model AccessLog {
+  id          String          @id @default(uuid())
+  tenantId    String
+  unitId      String?
+  userId      String?
+  deviceId    String?
+  method      AccessMethod
+  direction   AccessDirection @default(ENTRY)
+  granted     Boolean
+  reason      String?
+  visitorName String?
+  visitorPlate String?
+  notes       String?
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit   Unit?   @relation(fields: [unitId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
+  device Device? @relation(fields: [deviceId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, unitId])
+  @@index([tenantId, userId])
+  @@index([tenantId, method])
+  @@map("access_logs")
+}
+
+// =============================================
+// CARGOS (Cuotas mensuales, extraordinarias)
+// =============================================
+enum ChargeType {
+  MONTHLY
+  EXTRAORDINARY
+  PENALTY
+  OTHER
+}
+
+enum ChargeStatus {
+  PENDING
+  PAID
+  PARTIAL
+  CANCELLED
+}
+
+model Charge {
+  id          String       @id @default(uuid())
+  tenantId    String
+  unitId      String
+  type        ChargeType   @default(MONTHLY)
+  status      ChargeStatus @default(PENDING)
+  amount      Decimal      @db.Decimal(12, 2)
+  paidAmount  Decimal      @default(0) @db.Decimal(12, 2)
+  description String
+  dueDate     DateTime
+  isRecurring Boolean      @default(false)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit     Unit      @relation(fields: [unitId], references: [id])
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, unitId])
+  @@index([tenantId, status])
+  @@index([tenantId, dueDate])
+  @@map("charges")
+}
+
+// =============================================
+// PAGOS
+// =============================================
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  CARD
+  CHECK
+  OTHER
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  tenantId      String
+  unitId        String
+  chargeId      String?
+  amount        Decimal       @db.Decimal(12, 2)
+  method        PaymentMethod @default(CASH)
+  reference     String?
+  receiptUrl    String?
+  notes         String?
+  reconciled    Boolean       @default(false)
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit   Unit    @relation(fields: [unitId], references: [id])
+  charge Charge? @relation(fields: [chargeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, unitId])
+  @@map("payments")
+}
+
+// =============================================
+// CODIGOS QR
+// =============================================
+model QRCode {
+  id          String   @id @default(uuid())
+  tenantId    String
+  unitId      String
+  userId      String
+  code        String   @unique
+  visitorName String?
+  maxUses     Int      @default(1)
+  usedCount   Int      @default(0)
+  expiresAt   DateTime
+  isActive    Boolean  @default(true)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  unit   Unit   @relation(fields: [unitId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, code])
+  @@index([tenantId, expiresAt])
+  @@map("qr_codes")
+}
+
+// =============================================
+// CONFIGURACION DE INTEGRACIONES
+// =============================================
+enum IntegrationType {
+  ERREKA_MQTT       // ERREKA vía relay/MQTT (principal)
+  ERREKA_IP         // ERREKA vía módulo IP
+  HIKVISION_ISAPI   // Cámaras/acceso Hikvision
+  AXIS_VAPIX        // Cámaras Axis
+  ONVIF             // Cámaras ONVIF genérico
+  GENERIC_MQTT      // Dispositivo MQTT genérico
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  INACTIVE
+  ERROR
+  CONNECTING
+}
+
+model IntegrationConfig {
+  id           String            @id @default(uuid())
+  tenantId     String
+  name         String
+  type         IntegrationType
+  brand        String?
+  model        String?
+  host         String?
+  port         Int?
+  username     String?
+  passwordHash String?
+  mqttTopic    String?
+  config       Json              @default("{}")
+  isActive     Boolean           @default(true)
+  status       IntegrationStatus @default(INACTIVE)
+  lastCheck    DateTime?
+  errorMessage String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@map("integration_configs")
+}
+
+// =============================================
+// AUDITORIA
+// =============================================
+model AuditLog {
+  id       String @id @default(uuid())
+  tenantId String
+  userId   String?
+  action   String
+  entity   String
+  entityId String?
+  details  Json?
+  ip       String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action])
+  @@map("audit_logs")
+}
