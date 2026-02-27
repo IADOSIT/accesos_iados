@@ -31,6 +31,7 @@ echo  [ ACCESO EXTERNO - IP: 34.71.132.26 ]
 echo  13. App Movil - IP externa   (Flutter web apunta a 34.71.132.26:3001)
 echo  14. Abrir puertos - Firewall Windows (3001, 3002, 4000)
 echo  15. Levantar TODO con IP externa (3 ventanas)
+echo  16. Compilar APK Android      (CIERRA el servidor web primero)
 echo.
 echo   0. Salir
 echo.
@@ -52,6 +53,7 @@ if "%OPT%"=="12" goto PRISMA_GEN
 if "%OPT%"=="13" goto MOVIL_EXT
 if "%OPT%"=="14" goto ABRIR_PUERTOS
 if "%OPT%"=="15" goto TODOS_EXT
+if "%OPT%"=="16" goto BUILD_APK
 if "%OPT%"=="0"  goto FIN
 
 echo.
@@ -313,6 +315,40 @@ echo   Backend   -^> http://34.71.132.26:3001/api/health
 echo   Frontend  -^> http://34.71.132.26:3002
 echo   App Movil -^> http://34.71.132.26:4000
 echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:BUILD_APK
+cls
+echo.
+echo  ================================================
+echo   COMPILAR APK ANDROID
+echo  ================================================
+echo.
+echo  IMPORTANTE: Cierra el servidor Flutter web (puerto 4000)
+echo  antes de continuar, de lo contrario se caera el servicio.
+echo.
+set "CONFIRM="
+set /p CONFIRM="  Ya cerraste el servidor Flutter web? (s/n): "
+if /i not "%CONFIRM%"=="s" (
+  echo.
+  echo  Operacion cancelada. Cierra el servidor y vuelve a intentar.
+  echo.
+  pause
+  goto MENU
+)
+echo.
+echo  Compilando APK con IP externa 34.71.132.26...
+echo  (Esto tarda varios minutos)
+echo.
+cd /d "%~dp0mobile"
+C:\flutter\bin\flutter.bat build apk --dart-define=API_URL=http://34.71.132.26:3001/api
+echo.
+echo  APK generada en:
+echo  mobile\build\app\outputs\flutter-apk\app-release.apk
+echo.
+cd /d "%~dp0"
 pause
 goto MENU
 
