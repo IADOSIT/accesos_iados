@@ -13,7 +13,7 @@ services:
       - JWT_REFRESH_EXPIRES_IN=7d
       - PORT=3001
       - NODE_ENV=development
-      - FRONTEND_URL=http://localhost:3005
+      - FRONTEND_URL=https://accesodigital.iados.mx
       - MQTT_BROKER_URL=
       - MQTT_USERNAME=
       - MQTT_PASSWORD=
