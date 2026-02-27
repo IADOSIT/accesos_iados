@@ -33,7 +33,7 @@ services:
     ports:
       - "3005:3002"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:3004/api
+      - NEXT_PUBLIC_API_URL=https://accesodigitalapi.iados.mx/api
     depends_on:
       backend:
         condition: service_healthy
