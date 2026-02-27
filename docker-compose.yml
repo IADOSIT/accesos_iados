@@ -14,7 +14,7 @@ services:
       - PORT=3001
       - NODE_ENV=development
       - FRONTEND_URL=http://localhost:3005
-      - MQTT_BROKER_URL=mqtt://broker-url:1883
+      - MQTT_BROKER_URL=
       - MQTT_USERNAME=
       - MQTT_PASSWORD=
       - ACCESS_COOLDOWN_SECONDS=30
