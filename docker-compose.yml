@@ -7,7 +7,7 @@ services:
     ports:
       - "3004:3001"
     environment:
-      - DATABASE_URL=postgresql://usuario:password@host:5432/porton_digital?sslmode=require
+      - DATABASE_URL=postgresql://administrador:U191tl1ebFN2RJR0fld5QhC8U29AhdOQ@host:5432/iados_accesos?sslmode=require
       - JWT_SECRET=cambiar-en-produccion-clave-segura-min-32-chars
       - JWT_EXPIRES_IN=24h
       - JWT_REFRESH_EXPIRES_IN=7d
