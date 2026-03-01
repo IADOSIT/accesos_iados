@@ -129,6 +129,7 @@ async function dashboard(tenantId) {
     todayAccesses,
     monthPayments,
     onlineDevices,
+    paidUnitIds,
   ] = await Promise.all([
     prisma.unit.count({ where: { tenantId, isActive: true } }),
     prisma.userTenant.count({ where: { tenantId, isActive: true } }),
@@ -140,7 +141,14 @@ async function dashboard(tenantId) {
       _count: true,
     }),
     prisma.device.count({ where: { tenantId, status: 'ONLINE', isActive: true } }),
+    prisma.payment.findMany({
+      where: { tenantId, createdAt: { gte: startOfMonth } },
+      distinct: ['unitId'],
+      select: { unitId: true },
+    }),
   ]);
+
+  const monthPaidUnits = paidUnitIds.length;
 
   return {
     totalUnits,
@@ -152,6 +160,7 @@ async function dashboard(tenantId) {
       total: monthPayments._sum.amount || 0,
     },
     onlineDevices,
+    monthPaidUnits,
   };
 }
 

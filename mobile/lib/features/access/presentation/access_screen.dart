@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/providers/auth_provider.dart';
@@ -18,19 +20,27 @@ class AccessScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final logs = ref.watch(accessLogsProvider);
     final auth = ref.watch(authProvider);
+    // QR scanner solo en Android/iOS — en web la cámara requiere HTTPS
+    final canScan = (auth.isAdmin || auth.isGuard) && !kIsWeb;
 
     return Scaffold(
       backgroundColor: AppColors.bgDark,
       appBar: AppBar(
         title: const Text('Bitácora de Accesos'),
         actions: [
+          if (canScan)
+            IconButton(
+              icon: const Icon(Icons.qr_code_scanner_rounded),
+              tooltip: 'Escanear QR',
+              onPressed: () => _openScanner(context, ref),
+            ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () => ref.invalidate(accessLogsProvider),
           ),
         ],
       ),
-      floatingActionButton: (auth.isAdmin || auth.isGuard)
+      floatingActionButton: canScan
           ? FloatingActionButton.extended(
               onPressed: () => _showManualAccess(context),
               backgroundColor: AppColors.primary,
@@ -71,6 +81,16 @@ class AccessScreen extends ConsumerWidget {
     );
   }
 
+  void _openScanner(BuildContext context, WidgetRef ref) {
+    Navigator.of(context).push(MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => ProviderScope(
+        parent: ProviderScope.containerOf(context),
+        child: const _QRScannerScreen(),
+      ),
+    ));
+  }
+
   void _showManualAccess(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -80,6 +100,311 @@ class AccessScreen extends ConsumerWidget {
       ),
       isScrollControlled: true,
       builder: (_) => const _ManualAccessSheet(),
+    );
+  }
+}
+
+// ─── QR Scanner Screen ────────────────────────────────────────────────────────
+
+class _QRScannerScreen extends ConsumerStatefulWidget {
+  const _QRScannerScreen();
+
+  @override
+  ConsumerState<_QRScannerScreen> createState() => _QRScannerScreenState();
+}
+
+class _QRScannerScreenState extends ConsumerState<_QRScannerScreen> {
+  final MobileScannerController _controller = MobileScannerController(
+    detectionSpeed: DetectionSpeed.noDuplicates,
+  );
+  bool _processing = false;
+  _ScanResult? _result;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onDetect(BarcodeCapture capture) async {
+    if (_processing) return;
+    final code = capture.barcodes.firstOrNull?.rawValue;
+    // Solo procesa códigos IAD-
+    if (code == null || !code.startsWith('IAD-')) return;
+
+    setState(() => _processing = true);
+    await _controller.stop();
+
+    try {
+      final api = ref.read(apiClientProvider);
+
+      // Obtener dispositivos — prioriza ONLINE, multitenant automático por header
+      final devRes = await api.get('/devices');
+      final devices = (devRes.data['data'] as List? ?? []);
+      final online = devices.where((d) => d['status'] == 'ONLINE').toList();
+      final device = online.isNotEmpty
+          ? online.first
+          : (devices.isNotEmpty ? devices.first : null);
+
+      if (device == null) {
+        setState(() => _result = const _ScanResult(
+          granted: false,
+          message: 'No hay dispositivos disponibles',
+          deviceName: '',
+          code: '',
+        ));
+        return;
+      }
+
+      final res = await api.post('/access/open', data: {
+        'deviceId': device['id'],
+        'method': 'QR',
+        'direction': 'ENTRY',
+        'qrCode': code,
+      });
+
+      final data = res.data['data'] as Map?;
+      final granted = data?['granted'] as bool? ?? false;
+      final reason = data?['reason'] as String? ?? '';
+
+      ref.invalidate(accessLogsProvider);
+
+      setState(() => _result = _ScanResult(
+        granted: granted,
+        message: granted ? 'Acceso permitido' : reason.isNotEmpty ? reason : 'Acceso denegado',
+        deviceName: device['name'] as String? ?? '',
+        code: code,
+      ));
+    } catch (e) {
+      final errStr = e.toString();
+      String msg = 'Error al procesar el QR';
+      if (errStr.contains('403')) msg = 'Unidad con adeudo pendiente';
+      if (errStr.contains('400')) msg = 'QR inválido o agotado';
+      if (errStr.contains('404')) msg = 'QR no encontrado';
+
+      setState(() => _result = _ScanResult(
+        granted: false,
+        message: msg,
+        deviceName: '',
+        code: code ?? '',
+      ));
+    }
+  }
+
+  void _reset() {
+    setState(() {
+      _processing = false;
+      _result = null;
+    });
+    _controller.start();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: const Text('Escanear QR de acceso'),
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.flash_on_rounded),
+            tooltip: 'Linterna',
+            onPressed: () => _controller.toggleTorch(),
+          ),
+        ],
+      ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          MobileScanner(
+            controller: _controller,
+            onDetect: _processing ? null : _onDetect,
+          ),
+          if (_result == null) const _ScanOverlay(),
+          if (_processing && _result == null)
+            const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            ),
+          if (_result != null)
+            _ResultOverlay(
+              result: _result!,
+              onScanAgain: _reset,
+              onClose: () => Navigator.pop(context),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Resultado del escaneo ────────────────────────────────────────────────────
+
+class _ScanResult {
+  final bool granted;
+  final String message;
+  final String deviceName;
+  final String code;
+  const _ScanResult({
+    required this.granted,
+    required this.message,
+    required this.deviceName,
+    required this.code,
+  });
+}
+
+// ─── Overlay de cámara con recuadro de escaneo ────────────────────────────────
+
+class _ScanOverlay extends StatelessWidget {
+  const _ScanOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _OverlayPainter(),
+      child: Align(
+        alignment: const Alignment(0, 0.55),
+        child: Text(
+          'Apunta al código QR del visitante',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.85),
+            fontSize: 14,
+            shadows: const [Shadow(blurRadius: 8, color: Colors.black54)],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OverlayPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final boxSize = size.width * 0.68;
+    final boxLeft = (size.width - boxSize) / 2;
+    final boxTop = (size.height - boxSize) / 2 - 40;
+    final boxRect = Rect.fromLTWH(boxLeft, boxTop, boxSize, boxSize);
+
+    // Fondo semitransparente con recorte
+    final overlayPaint = Paint()..color = Colors.black.withOpacity(0.6);
+    final path = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..addRRect(RRect.fromRectAndRadius(boxRect, const Radius.circular(16)))
+      ..fillType = PathFillType.evenOdd;
+    canvas.drawPath(path, overlayPaint);
+
+    // Esquinas decorativas en color primary
+    final cornerPaint = Paint()
+      ..color = AppColors.primary
+      ..strokeWidth = 3.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    const c = 22.0; // longitud de la esquina
+    final l = boxLeft;
+    final t = boxTop;
+    final r = boxLeft + boxSize;
+    final b = boxTop + boxSize;
+
+    // Top-left
+    canvas.drawLine(Offset(l, t + c), Offset(l, t), cornerPaint);
+    canvas.drawLine(Offset(l, t), Offset(l + c, t), cornerPaint);
+    // Top-right
+    canvas.drawLine(Offset(r - c, t), Offset(r, t), cornerPaint);
+    canvas.drawLine(Offset(r, t), Offset(r, t + c), cornerPaint);
+    // Bottom-left
+    canvas.drawLine(Offset(l, b - c), Offset(l, b), cornerPaint);
+    canvas.drawLine(Offset(l, b), Offset(l + c, b), cornerPaint);
+    // Bottom-right
+    canvas.drawLine(Offset(r - c, b), Offset(r, b), cornerPaint);
+    canvas.drawLine(Offset(r, b - c), Offset(r, b), cornerPaint);
+  }
+
+  @override
+  bool shouldRepaint(_OverlayPainter old) => false;
+}
+
+// ─── Overlay de resultado (éxito/error) ──────────────────────────────────────
+
+class _ResultOverlay extends StatelessWidget {
+  final _ScanResult result;
+  final VoidCallback onScanAgain;
+  final VoidCallback onClose;
+
+  const _ResultOverlay({
+    required this.result,
+    required this.onScanAgain,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = result.granted ? AppColors.accessGranted : AppColors.accessDenied;
+    final icon = result.granted ? Icons.check_circle_rounded : Icons.cancel_rounded;
+
+    return Container(
+      color: Colors.black.withOpacity(0.85),
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: color, size: 96),
+          const SizedBox(height: 24),
+          Text(
+            result.message,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: color,
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (result.deviceName.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              result.deviceName,
+              style: const TextStyle(color: Colors.white54, fontSize: 14),
+            ),
+          ],
+          if (result.code.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              result.code,
+              style: const TextStyle(
+                color: Colors.white38,
+                fontSize: 12,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ],
+          const SizedBox(height: 48),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onScanAgain,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              icon: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white),
+              label: const Text(
+                'Escanear otro',
+                style: TextStyle(color: Colors.white, fontSize: 16),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: onClose,
+            child: const Text('Cerrar', style: TextStyle(color: Colors.white54)),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -159,7 +484,8 @@ class _AccessCard extends StatelessWidget {
                           if (isDelinquent) ...[
                             const SizedBox(width: 6),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
                                 color: AppColors.delinquentBg,
                                 borderRadius: BorderRadius.circular(6),
@@ -184,13 +510,15 @@ class _AccessCard extends StatelessWidget {
                           const SizedBox(width: 4),
                           Text(
                             direction == 'ENTRY' ? 'Entrada' : 'Salida',
-                            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                            style:
+                                const TextStyle(color: AppColors.textMuted, fontSize: 12),
                           ),
                           const Text(' · ',
                               style: TextStyle(color: AppColors.textMuted)),
                           Text(
                             _methodLabel(method),
-                            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                            style:
+                                const TextStyle(color: AppColors.textMuted, fontSize: 12),
                           ),
                         ],
                       ),
@@ -214,7 +542,8 @@ class _AccessCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: color.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(10),
@@ -243,14 +572,16 @@ class _AccessCard extends StatelessWidget {
                         size: 12, color: AppColors.textMuted),
                     const SizedBox(width: 4),
                     Text(visitorPlate,
-                        style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                        style:
+                            const TextStyle(color: AppColors.textMuted, fontSize: 12)),
                   ],
                   if (notes != null) ...[
                     const SizedBox(width: 12),
                     const Icon(Icons.notes_rounded, size: 12, color: AppColors.textMuted),
                     const SizedBox(width: 4),
                     Text(notes,
-                        style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                        style:
+                            const TextStyle(color: AppColors.textMuted, fontSize: 12)),
                   ],
                 ],
               ),
@@ -384,7 +715,6 @@ class _ManualAccessSheetState extends ConsumerState<_ManualAccessSheet> {
               ),
             ),
             const SizedBox(height: 20),
-            // Selector de dispositivo
             if (_devicesError != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -414,17 +744,18 @@ class _ManualAccessSheetState extends ConsumerState<_ManualAccessSheet> {
                 onChanged: (v) => setState(() => _selectedDeviceId = v),
               ),
             const SizedBox(height: 12),
-            // Selector Entrada / Salida
             Row(
               children: [
-                Expanded(child: _DirectionButton(
+                Expanded(
+                    child: _DirectionButton(
                   label: 'Entrada',
                   icon: Icons.login_rounded,
                   selected: _direction == 'ENTRY',
                   onTap: () => setState(() => _direction = 'ENTRY'),
                 )),
                 const SizedBox(width: 8),
-                Expanded(child: _DirectionButton(
+                Expanded(
+                    child: _DirectionButton(
                   label: 'Salida',
                   icon: Icons.logout_rounded,
                   selected: _direction == 'EXIT',
@@ -460,7 +791,8 @@ class _ManualAccessSheetState extends ConsumerState<_ManualAccessSheet> {
                     ? const SizedBox(
                         height: 18,
                         width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
                       )
                     : const Text('Registrar acceso'),
               ),

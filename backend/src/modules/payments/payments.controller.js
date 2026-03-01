@@ -54,4 +54,13 @@ async function getDelinquent(req, res) {
   return success(res, data);
 }
 
-module.exports = { createCharge, createPayment, getCharges, getPayments, reconcile, getDelinquent };
+async function bulkPayments(req, res) {
+  try {
+    const result = await svc.bulkPayments(req.tenantId, req.body);
+    return success(res, result, `${result.paid} pagos registrados`, 201);
+  } catch (err) {
+    return error(res, err.message, err.status || 500);
+  }
+}
+
+module.exports = { createCharge, createPayment, getCharges, getPayments, reconcile, getDelinquent, bulkPayments };

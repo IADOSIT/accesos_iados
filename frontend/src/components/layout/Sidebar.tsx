@@ -17,6 +17,7 @@ import {
   ArrowRightOnRectangleIcon,
   ShieldCheckIcon,
   BuildingOffice2Icon,
+  BellIcon,
 } from '@heroicons/react/24/outline';
 
 const adminNav = [
@@ -28,6 +29,7 @@ const adminNav = [
   { name: 'Pagos', href: '/pagos', icon: CreditCardIcon },
   { name: 'Morosos', href: '/morosos', icon: ExclamationTriangleIcon },
   { name: 'Reportes', href: '/reportes', icon: ChartBarIcon },
+  { name: 'Notificaciones', href: '/notificaciones', icon: BellIcon },
   { name: 'Configuración', href: '/configuracion', icon: Cog6ToothIcon },
 ];
 
@@ -51,35 +53,12 @@ export default function Sidebar() {
   return (
     <aside className="fixed inset-y-0 left-0 w-64 glass border-r border-white/20 z-40 flex flex-col">
       {/* Logo */}
-      <div className="p-6 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          {/* Hexágono iaDoS */}
-          <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
-            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-10 h-10">
-              <polygon
-                points="24,2 44,13 44,35 24,46 4,35 4,13"
-                fill="#10B981"
-                stroke="#ffffff"
-                strokeWidth="1.5"
-              />
-              <text
-                x="24"
-                y="28"
-                textAnchor="middle"
-                fill="white"
-                fontSize="11"
-                fontWeight="bold"
-                fontFamily="system-ui, sans-serif"
-                letterSpacing="0.5"
-              >
-                iaDoS
-              </text>
-            </svg>
-          </div>
-          <div>
-            <h1 className="font-bold text-base text-slate-800 leading-tight">Acceso Digital</h1>
-            <p className="text-xs text-emerald-600 font-medium">iaDoS</p>
-          </div>
+      <div className="px-6 pt-6 pb-5 border-b border-white/10 flex flex-col items-center gap-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo3_ia2.png" alt="iaDoS" className="w-36 h-auto" />
+        <div className="text-center">
+          <h1 className="font-bold text-base text-slate-800 leading-tight">Acceso Digital</h1>
+          <p className="text-xs text-emerald-600 font-medium">iaDoS</p>
         </div>
       </div>
 

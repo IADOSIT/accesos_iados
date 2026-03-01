@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../core/storage/secure_storage.dart';
 import '../../core/network/api_client.dart';
 
@@ -68,6 +70,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final ApiClient _api;
 
   AuthNotifier(this._storage, this._api) : super(const AuthState()) {
+    _api.onUnauthorized = () {
+      state = const AuthState(); // token expirado → redirige al login via GoRouter
+    };
     _restoreSession();
   }
 
@@ -144,6 +149,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         firstName: firstName,
         lastName: lastName,
       );
+      _registerFCMToken(); // fire-and-forget, no bloquea el login
       return true;
     } catch (e) {
       state = state.copyWith(
@@ -157,6 +163,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> logout() async {
     await _storage.clear();
     state = const AuthState();
+  }
+
+  Future<void> _registerFCMToken() async {
+    if (kIsWeb) return;
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null) return;
+      await _api.put('/auth/fcm-token', data: {'token': token});
+      await _storage.saveFCMToken(token);
+      // Actualizar token si Firebase lo rota
+      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+        try {
+          await _api.put('/auth/fcm-token', data: {'token': newToken});
+          await _storage.saveFCMToken(newToken);
+        } catch (_) {}
+      });
+    } catch (_) {} // silencioso — no afecta el login
   }
 }
 

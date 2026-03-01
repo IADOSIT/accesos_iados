@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart';
+import 'dart:ui' as ui;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -443,21 +445,38 @@ class _QRDisplayDialog extends ConsumerStatefulWidget {
 
 class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
   bool _revoking = false;
+  bool _sharing = false;
+  final _shareKey = GlobalKey();
 
-  Future<void> _share() async {
-    final visitorName = widget.qr['visitorName'] as String? ?? 'Visitante';
-    final code = widget.qr['code'] as String? ?? '';
-    final maxUses = widget.qr['maxUses'] as int? ?? 1;
-    final expStr = _formatDate(widget.qr['expiresAt'] as String?);
+  Future<void> _shareAsImage() async {
+    setState(() => _sharing = true);
+    try {
+      final boundary =
+          _shareKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) throw Exception('No se pudo capturar la imagen');
 
-    await Share.share(
-      '🔑 Código de acceso — ${widget.tenantName}\n\n'
-      'Visitante: $visitorName\n'
-      'Código: $code\n'
-      'Válido hasta: $expStr\n'
-      'Usos disponibles: $maxUses\n\n'
-      'Muestra este mensaje al guardia o escanea el QR en la entrada.',
-    );
+      final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) throw Exception('Error al procesar imagen');
+
+      final bytes = byteData.buffer.asUint8List();
+      final code = widget.qr['code'] as String? ?? 'visita';
+      final xFile = XFile.fromData(
+        bytes,
+        name: 'qr-acceso-$code.png',
+        mimeType: 'image/png',
+      );
+      await Share.shareXFiles([xFile], subject: 'Código de acceso QR');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al compartir: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
   }
 
   void _copyCode() {
@@ -476,7 +495,8 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
         backgroundColor: AppColors.bgCard,
         title: const Text('Revocar QR',
             style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text('¿Deshabilitar este QR? El visitante ya no podrá acceder.',
+        content: const Text(
+            'El visitante ya no podrá acceder con este código.',
             style: TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(
@@ -510,165 +530,339 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
   @override
   Widget build(BuildContext context) {
     final code = widget.qr['code'] as String? ?? '';
-    final visitorName = widget.qr['visitorName'] as String? ?? 'Visitante';
-    final maxUses = widget.qr['maxUses'] as int? ?? 1;
-    final usedCount = widget.qr['usedCount'] as int? ?? 0;
-    final expStr = _formatDate(widget.qr['expiresAt'] as String?);
     final active = _isEffectivelyActive(widget.qr);
 
     return Dialog(
       backgroundColor: AppColors.bgCard,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Código QR',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 18,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded,
-                      color: AppColors.textMuted, size: 20),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // QR Code
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: QrImageView(
-                data: code,
-                version: QrVersions.auto,
-                size: 200,
-                backgroundColor: Colors.white,
-                eyeStyle: const QrEyeStyle(
-                  eyeShape: QrEyeShape.square,
-                  color: Color(0xFF0A0F1E),
-                ),
-                dataModuleStyle: const QrDataModuleStyle(
-                  dataModuleShape: QrDataModuleShape.square,
-                  color: Color(0xFF0A0F1E),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Info
-            Text(
-              visitorName,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 4),
-            GestureDetector(
-              onTap: _copyCode,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      code,
-                      style: const TextStyle(
-                        color: AppColors.primary,
-                        fontFamily: 'monospace',
-                        fontSize: 14,
+        padding: const EdgeInsets.all(16),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Código QR',
+                      style: TextStyle(
+                        color: AppColors.textPrimary,
                         fontWeight: FontWeight.w700,
-                        letterSpacing: 1,
+                        fontSize: 18,
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.copy_rounded,
-                        size: 14, color: AppColors.primary),
-                  ],
-                ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded,
+                        color: AppColors.textMuted, size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Vence: $expStr',
-              style:
-                  const TextStyle(color: AppColors.textMuted, fontSize: 12),
-            ),
-            Text(
-              'Usos: $usedCount / $maxUses',
-              style:
-                  const TextStyle(color: AppColors.textMuted, fontSize: 12),
-            ),
-            const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
-            // Acciones
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _share,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+              // QR Share Card — esto ES la imagen que se comparte
+              RepaintBoundary(
+                key: _shareKey,
+                child: _QRShareCard(
+                  qr: widget.qr,
+                  tenantName: widget.tenantName,
                 ),
-                icon: const Icon(Icons.share_rounded, color: Colors.white),
-                label: const Text('Compartir',
-                    style: TextStyle(color: Colors.white, fontSize: 15)),
               ),
-            ),
-            if (active) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 14),
+
+              // Copiar código
+              GestureDetector(
+                onTap: _copyCode,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        code,
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontFamily: 'monospace',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.copy_rounded,
+                          size: 14, color: AppColors.primary),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Compartir imagen
               SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _revoking ? null : _revoke,
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(
-                        color: AppColors.error.withOpacity(0.5)),
+                child: ElevatedButton.icon(
+                  onPressed: _sharing ? null : _shareAsImage,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
-                  icon: _revoking
+                  icon: _sharing
                       ? const SizedBox(
-                          width: 16,
-                          height: 16,
+                          width: 18,
+                          height: 18,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: AppColors.error),
+                              strokeWidth: 2, color: Colors.white),
                         )
-                      : const Icon(Icons.block_rounded,
-                          color: AppColors.error, size: 18),
-                  label: const Text('Revocar QR',
-                      style: TextStyle(color: AppColors.error)),
+                      : const Icon(Icons.share_rounded, color: Colors.white),
+                  label: Text(
+                    _sharing ? 'Preparando...' : 'Compartir imagen',
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                  ),
                 ),
               ),
+
+              // Revocar (solo si activo)
+              if (active) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _revoking ? null : _revoke,
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(
+                          color: AppColors.error.withOpacity(0.5)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: _revoking
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: AppColors.error),
+                          )
+                        : const Icon(Icons.block_rounded,
+                            color: AppColors.error, size: 18),
+                    label: const Text('Revocar QR',
+                        style: TextStyle(color: AppColors.error)),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+// ─── QR Share Card (tarjeta blanca que se comparte como imagen) ───────────────
+
+class _QRShareCard extends StatelessWidget {
+  final Map<String, dynamic> qr;
+  final String tenantName;
+
+  const _QRShareCard({required this.qr, required this.tenantName});
+
+  @override
+  Widget build(BuildContext context) {
+    final code = qr['code'] as String? ?? '';
+    final visitorName = qr['visitorName'] as String? ?? 'Visitante';
+    final unitIdentifier = qr['unit']?['identifier'] as String?;
+    final createdStr = _formatDate(qr['createdAt'] as String?);
+    final expiresStr = _formatDate(qr['expiresAt'] as String?);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Header
+          Text(
+            tenantName,
+            style: const TextStyle(
+              color: Color(0xFF0F172A),
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 2),
+          const Text(
+            'Código de acceso para visitante',
+            style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+
+          // QR Code
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: QrImageView(
+              data: code.isNotEmpty ? code : 'IAD-000000',
+              version: QrVersions.auto,
+              size: 180,
+              backgroundColor: Colors.white,
+              eyeStyle: const QrEyeStyle(
+                eyeShape: QrEyeShape.square,
+                color: Color(0xFF0F172A),
+              ),
+              dataModuleStyle: const QrDataModuleStyle(
+                dataModuleShape: QrDataModuleShape.square,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Instrucciones
+          Container(
+            width: double.infinity,
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0FDF4),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFBBF7D0)),
+            ),
+            child: Column(
+              children: [
+                const Text(
+                  'Presenta este QR en el lector de la entrada\ndel fraccionamiento',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF166534),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.wb_sunny_outlined,
+                        size: 12, color: Color(0xFF16A34A)),
+                    SizedBox(width: 4),
+                    Text(
+                      'Sube el brillo de tu dispositivo',
+                      style:
+                          TextStyle(color: Color(0xFF16A34A), fontSize: 10),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Datos del visitante
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              children: [
+                _CardInfoRow(label: 'Visitante', value: visitorName),
+                if (unitIdentifier != null)
+                  _CardInfoRow(label: 'Unidad', value: unitIdentifier),
+                if (createdStr.isNotEmpty)
+                  _CardInfoRow(label: 'Generado', value: createdStr),
+                if (expiresStr.isNotEmpty)
+                  _CardInfoRow(label: 'Válido hasta', value: expiresStr),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Footer: iados.mx + logo
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Text(
+                'iados.mx',
+                style: TextStyle(
+                  color: Color(0xFF94A3B8),
+                  fontSize: 10,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              Image.asset(
+                'logo3_ia2.png',
+                width: 28,
+                height: 28,
+                fit: BoxFit.contain,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CardInfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _CardInfoRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 72,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 11,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFF1E293B),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -23,6 +23,10 @@ class ApiClient {
   final SecureStorage _storage;
   late final Dio _dio;
 
+  /// Llamado cuando el servidor devuelve 401 (token expirado/inválido).
+  /// AuthNotifier lo asigna para limpiar el estado y redirigir al login.
+  void Function()? onUnauthorized;
+
   ApiClient(this._storage) {
     _dio = Dio(BaseOptions(
       baseUrl: _baseUrl,
@@ -59,6 +63,7 @@ class ApiClient {
   ) async {
     if (error.response?.statusCode == 401) {
       await _storage.clear();
+      onUnauthorized?.call();
     }
     handler.next(error);
   }

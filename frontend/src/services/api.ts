@@ -1,4 +1,4 @@
-import { GET, POST, PUT, DELETE } from '@/lib/api';
+import { GET, POST, PUT, PATCH, DELETE } from '@/lib/api';
 
 // ============ AUTH ============
 export const authApi = {
@@ -56,6 +56,7 @@ export const paymentsApi = {
   createPayment: (data: unknown) => POST('/payments/payments', data),
   reconcile: (paymentIds: string[]) => POST('/payments/reconcile', { paymentIds }),
   delinquent: () => GET('/payments/delinquent'),
+  bulkPayments: (data: unknown) => POST('/payments/bulk', data),
 };
 
 // ============ TENANTS (Super Admin) ============
@@ -82,6 +83,17 @@ export const configApi = {
   updateIntegration: (id: string, data: unknown) => PUT(`/config/integraciones/${id}`, data),
   deleteIntegration: (id: string) => DELETE(`/config/integraciones/${id}`),
   testIntegration: (id: string) => POST(`/config/integraciones/${id}/test`, {}),
+};
+
+// ============ NOTIFICACIONES ============
+export const notificationsApi = {
+  list: () => GET('/notifications'),
+  unreadCount: () => GET('/notifications/unread-count'),
+  readAll: () => PATCH('/notifications/read-all', {}),
+  getConfig: () => GET('/notifications/config'),
+  updateConfig: (data: unknown) => PUT('/notifications/config', data),
+  history: (params?: string) => GET(`/notifications/history${params ? `?${params}` : ''}`),
+  broadcast: (data: unknown) => POST('/notifications/broadcast', data),
 };
 
 // ============ REPORTES ============

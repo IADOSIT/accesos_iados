@@ -15,5 +15,6 @@ router.post('/payments', authorize('ADMIN'), validate(createPaymentSchema), ctrl
 router.get('/payments', authorize('ADMIN'), ctrl.getPayments);
 router.post('/reconcile', authorize('ADMIN'), validate(reconcileSchema), ctrl.reconcile);
 router.get('/delinquent', authorize('ADMIN', 'GUARD'), ctrl.getDelinquent);
+router.post('/bulk', authorize('ADMIN'), ctrl.bulkPayments);
 
 module.exports = router;

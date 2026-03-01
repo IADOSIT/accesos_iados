@@ -47,6 +47,7 @@ model User {
   lastName     String
   phone        String?
   avatarUrl    String?
+  fcmToken     String?
   isActive     Boolean  @default(true)
   isSuperAdmin Boolean  @default(false)
   createdAt    DateTime @default(now())
@@ -373,4 +374,22 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([tenantId, action])
   @@map("audit_logs")
+}
+
+// =============================================
+// NOTIFICACIONES
+// =============================================
+model Notification {
+  id        String    @id @default(uuid())
+  tenantId  String
+  userId    String
+  title     String
+  body      String
+  type      String    // ACCESS_DENIED | QR_USED | NEW_CHARGE | PAYMENT_CONFIRMED | DEVICE_OFFLINE | MANUAL
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId, userId, createdAt])
+  @@map("notifications")
 }

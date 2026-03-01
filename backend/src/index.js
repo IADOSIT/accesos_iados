@@ -17,6 +17,7 @@ const accessRoutes = require('./modules/access/access.routes');
 const paymentRoutes = require('./modules/payments/payments.routes');
 const reportRoutes = require('./modules/reports/reports.routes');
 const configRoutes = require('./modules/config/config.routes');
+const notificationRoutes = require('./modules/notifications/notifications.routes');
 
 const app = express();
 
@@ -77,6 +78,7 @@ app.use('/api/access', accessRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 404
 app.use((req, res) => {
@@ -93,7 +95,39 @@ app.use((err, req, res, next) => {
 app.listen(env.PORT, () => {
   console.log(`[iaDoS API] Servidor corriendo en puerto ${env.PORT}`);
   console.log(`[iaDoS API] Entorno: ${env.NODE_ENV}`);
-  mqttService.connect();
+  // Al conectar MQTT, suscribir al topic de estado de cada dispositivo
+  // El Shelly Plus publica true/false en shellyXXXX/online al conectar/desconectar
+  mqttService.connect(async () => {
+    const prisma = require('./config/database');
+    const devicesService = require('./modules/devices/devices.service');
+    const notif = require('./services/notification');
+
+    const devices = await prisma.device.findMany({
+      where: { mqttTopic: { not: null }, isActive: true },
+    });
+
+    for (const device of devices) {
+      const prefix = device.mqttTopic.split('/')[0]; // shellyplus1-A1B2C3
+      const onlineTopic = `${prefix}/online`;
+
+      mqttService.subscribe(onlineTopic, async (payload) => {
+        const status = (payload === true || payload === 'true') ? 'ONLINE' : 'OFFLINE';
+        await devicesService.updateStatus(device.id, status);
+        console.log(`[MQTT] ${device.name} → ${status}`);
+        if (status === 'OFFLINE') {
+          notif.sendToRole(device.tenantId, 'ADMIN', 'DEVICE_OFFLINE', 'Dispositivo desconectado', `${device.name} está fuera de línea`, { deviceId: device.id });
+        }
+      });
+
+      // Si el Shelly ya estaba conectado antes de que arrancara el backend,
+      // no publica online/true de nuevo. Escuchamos sus eventos para marcarlo ONLINE
+      mqttService.subscribe(`${prefix}/events/rpc`, async () => {
+        await devicesService.updateStatus(device.id, 'ONLINE');
+      });
+    }
+
+    console.log(`[MQTT] Monitoreando ${devices.length} dispositivo(s)`);
+  });
 
   // Cron: limpieza diaria de QRs expirados hace más de 30 días
   const { cleanupExpiredQRs } = require('./modules/access/access.service');

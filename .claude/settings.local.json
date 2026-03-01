@@ -29,7 +29,9 @@
       "Bash(find:*)",
       "Bash(cat:*)",
       "Bash(C:/flutter/bin/flutter.bat pub:*)",
-      "Bash(C:/flutter/bin/flutter.bat build:*)"
+      "Bash(C:/flutter/bin/flutter.bat build:*)",
+      "Bash(\"C:/flutter/bin/flutter.bat\" clean:*)",
+      "Bash(\"C:/flutter/bin/flutter.bat\" build:*)"
     ]
   }
 }

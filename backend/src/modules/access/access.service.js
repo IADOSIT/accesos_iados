@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const prisma = require('../../config/database');
 const env = require('../../config/env');
 const mqttService = require('../../services/mqtt');
+const notif = require('../../services/notification');
 
 // Cache en memoria para cooldown anti-spam
 const cooldownMap = new Map();
@@ -43,6 +44,7 @@ async function openGate(tenantId, userId, data) {
     if (unit?.isDelinquent) {
       // Registrar intento denegado
       await createLog(tenantId, resolvedUnitId, userId, device.id, method, direction, false, 'Acceso denegado por morosidad', visitorName, visitorPlate, notes);
+      notif.sendToUnit(tenantId, resolvedUnitId, 'ACCESS_DENIED', 'Acceso denegado', 'Tu unidad tiene un adeudo pendiente', { deviceId: device.id });
       throw { status: 403, message: 'Acceso denegado: unidad con adeudo pendiente' };
     }
   }
@@ -76,6 +78,7 @@ async function handleQRAccess(tenantId, userId, device, code, visitorName, visit
   const unit = await prisma.unit.findUnique({ where: { id: qr.unitId } });
   if (unit?.isDelinquent) {
     await createLog(tenantId, qr.unitId, userId, device.id, 'QR', 'ENTRY', false, 'Acceso denegado por morosidad', visitorName, visitorPlate, notes);
+    notif.sendToUnit(tenantId, qr.unitId, 'ACCESS_DENIED', 'Acceso denegado', 'Tu unidad tiene un adeudo pendiente', { deviceId: device.id });
     throw { status: 403, message: 'Acceso denegado: unidad con adeudo pendiente' };
   }
 
@@ -88,7 +91,17 @@ async function handleQRAccess(tenantId, userId, device, code, visitorName, visit
 async function executeOpen(tenantId, unitId, userId, device, method, direction, granted, reason, visitorName, visitorPlate, notes) {
   // Enviar comando MQTT al dispositivo
   if (device.mqttTopic) {
-    mqttService.publish(device.mqttTopic, JSON.stringify({ action: 'OPEN', direction, timestamp: Date.now() }));
+    // Shelly Plus 1 (Gen 2) usa RPC sobre MQTT
+    // Topic: shellyplus1-{id}/rpc
+    // toggle_after: apaga el relay automáticamente después de 2 segundos (pulso para portón)
+    const prefix = device.mqttTopic.split('/')[0]; // shellyplus1-fcb46728f5c4
+    const rpcTopic = `${prefix}/rpc`;
+    mqttService.publish(rpcTopic, JSON.stringify({
+      id: Date.now(),
+      src: 'iados',
+      method: 'Switch.Set',
+      params: { id: 0, on: true, toggle_after: 2 },
+    }));
   }
 
   // Registrar cooldown
@@ -98,6 +111,11 @@ async function executeOpen(tenantId, unitId, userId, device, method, direction, 
 
   // Crear log
   const log = await createLog(tenantId, unitId, userId, device.id, method, direction, granted, reason, visitorName, visitorPlate, notes);
+
+  // Notificar QR usado exitosamente
+  if (granted && method === 'QR' && unitId) {
+    notif.sendToUnit(tenantId, unitId, 'QR_USED', 'Visita en puerta', `QR utilizado — ${log.visitorName || 'visitante'}`, { deviceId: device.id });
+  }
 
   return { granted, reason, log };
 }

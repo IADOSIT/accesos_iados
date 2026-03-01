@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { usersApi, tenantsApi } from '@/services/api';
+import { usersApi, tenantsApi, unitsApi } from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -14,9 +14,13 @@ export default function UsuariosPage() {
 
   const [users, setUsers] = useState<any[]>([]);
   const [tenants, setTenants] = useState<any[]>([]);
+  const [units, setUnits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editRow, setEditRow] = useState<any>(null);
   const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', phone: '', role: 'RESIDENT', tenantId: tenantId || '' });
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', phone: '', role: 'RESIDENT', unitId: '' });
 
   const load = () => {
     setLoading(true);
@@ -31,6 +35,7 @@ export default function UsuariosPage() {
     if (isSuperAdmin) {
       tenantsApi.list().then((res: any) => setTenants(res.data || [])).catch(console.error);
     }
+    unitsApi.list('').then((res: any) => setUnits(res.data || [])).catch(console.error);
   }, [isSuperAdmin]);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -41,6 +46,29 @@ export default function UsuariosPage() {
       await api('/users', { method: 'POST', body: form, headers: { 'x-tenant-id': targetTenantId } });
       setShowModal(false);
       setForm({ email: '', password: '', firstName: '', lastName: '', phone: '', role: 'RESIDENT', tenantId: tenantId || '' });
+      load();
+    } catch (err) { alert(err instanceof Error ? err.message : 'Error'); }
+  };
+
+  const handleEditOpen = (row: any) => {
+    setEditRow(row);
+    setEditForm({
+      firstName: row.user?.firstName || '',
+      lastName: row.user?.lastName || '',
+      phone: row.user?.phone || '',
+      role: row.role || 'RESIDENT',
+      unitId: row.unit?.id || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const payload: any = { ...editForm };
+      if (!payload.unitId) payload.unitId = null;
+      await usersApi.update(editRow.userId || editRow.user?.id, payload);
+      setShowEditModal(false);
       load();
     } catch (err) { alert(err instanceof Error ? err.message : 'Error'); }
   };
@@ -81,6 +109,9 @@ export default function UsuariosPage() {
     )},
     { key: 'actions', header: 'Acciones', render: (row: any) => (
       <div className="flex gap-2">
+        <button onClick={() => handleEditOpen(row)} className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200">
+          Editar
+        </button>
         <button onClick={() => handleToggle(row)}
           className={`text-xs px-2 py-1 rounded ${row.isActive !== false ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}>
           {row.isActive !== false ? 'Desactivar' : 'Activar'}
@@ -99,6 +130,7 @@ export default function UsuariosPage() {
       />
       <DataTable columns={columns} data={users} loading={loading} emptyMessage="No hay usuarios registrados" />
 
+      {/* Modal Crear */}
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Nuevo Usuario">
         <form onSubmit={handleCreate} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -145,6 +177,47 @@ export default function UsuariosPage() {
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">Cancelar</button>
             <button type="submit" className="btn-primary">Crear usuario</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal Editar */}
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Editar Usuario">
+        <form onSubmit={handleEditSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Nombre *</label>
+              <input className="input-field" value={editForm.firstName} onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })} required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Apellido *</label>
+              <input className="input-field" value={editForm.lastName} onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })} required />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
+              <input className="input-field" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Rol *</label>
+              <select className="input-field" value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}>
+                <option value="RESIDENT">Residente</option>
+                <option value="GUARD">Guardia</option>
+                <option value="ADMIN">Administrador</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Unidad asignada</label>
+            <select className="input-field" value={editForm.unitId} onChange={(e) => setEditForm({ ...editForm, unitId: e.target.value })}>
+              <option value="">— Sin unidad —</option>
+              {units.map((u: any) => <option key={u.id} value={u.id}>{u.identifier}{u.block ? ` — ${u.block}` : ''}</option>)}
+            </select>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary">Cancelar</button>
+            <button type="submit" className="btn-primary">Guardar cambios</button>
           </div>
         </form>
       </Modal>

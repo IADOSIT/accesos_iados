@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "894930853027",
+    "project_id": "iados-5c460",
+    "storage_bucket": "iados-5c460.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:894930853027:android:1f08e0228fa7949fdbb316",
+        "android_client_info": {
+          "package_name": "mx.iados.acceso_digital"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDMgizzJ3ACTwJ7yC6Nr3bnyRt6lVFFH1A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

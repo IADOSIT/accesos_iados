@@ -35,8 +35,12 @@ export default function FraccionamientosPage() {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<any>(null);
+  const [editTenant, setEditTenant] = useState<any>(null);
+  const [editForm, setEditForm] = useState({ name: '', slug: '', address: '', phone: '', email: '' });
   const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: '',
     slug: '',
@@ -119,6 +123,32 @@ export default function FraccionamientosPage() {
       load();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error');
+    }
+  };
+
+  const handleEditOpen = (tenant: any) => {
+    setEditTenant(tenant);
+    setEditForm({
+      name: tenant.name || '',
+      slug: tenant.slug || '',
+      address: tenant.address || '',
+      phone: tenant.phone || '',
+      email: tenant.email || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await tenantsApi.update(editTenant.id, editForm);
+      setShowEditModal(false);
+      load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al actualizar');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -223,6 +253,13 @@ export default function FraccionamientosPage() {
                         <EyeIcon className="w-5 h-5 text-slate-500" />
                       </button>
                       <button
+                        onClick={() => handleEditOpen(tenant)}
+                        className="p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Editar"
+                      >
+                        <PencilIcon className="w-5 h-5 text-blue-500" />
+                      </button>
+                      <button
                         onClick={() => handleToggleActive(tenant)}
                         className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
                         title={tenant.isActive ? 'Desactivar' : 'Activar'}
@@ -317,6 +354,42 @@ export default function FraccionamientosPage() {
             <button type="button" onClick={() => setShowCreateModal(false)} className="btn-secondary">Cancelar</button>
             <button type="submit" disabled={creating} className="btn-primary">
               {creating ? 'Creando...' : 'Crear fraccionamiento'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal Editar */}
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Editar Fraccionamiento">
+        <form onSubmit={handleEditSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Nombre *</label>
+              <input className="input-field" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Slug (URL) *</label>
+              <input className="input-field font-mono text-sm" value={editForm.slug} onChange={(e) => setEditForm({ ...editForm, slug: e.target.value })} required />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Dirección</label>
+            <input className="input-field" value={editForm.address} onChange={(e) => setEditForm({ ...editForm, address: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
+              <input className="input-field" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+              <input className="input-field" type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary">Cancelar</button>
+            <button type="submit" disabled={saving} className="btn-primary">
+              {saving ? 'Guardando...' : 'Guardar cambios'}
             </button>
           </div>
         </form>

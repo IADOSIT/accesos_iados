@@ -21,6 +21,7 @@ echo   6. Test conexion MQTT       (broker IoT)
 echo   7. Test puertos del sistema (3001, 3002, 4000, 1883, 5432)
 echo   8. Estado procesos Node.js
 echo   9. Matar puerto ocupado
+echo  17. Mosquitto Broker         (estado / iniciar / reiniciar)
 echo.
 echo  [ MANTENIMIENTO ]
 echo  10. Instalar dependencias    (npm install ambos)
@@ -31,7 +32,7 @@ echo  [ ACCESO EXTERNO - IP: 34.71.132.26 ]
 echo  13. App Movil - IP externa   (Flutter web apunta a 34.71.132.26:3001)
 echo  14. Abrir puertos - Firewall Windows (3001, 3002, 4000)
 echo  15. Levantar TODO con IP externa (3 ventanas)
-echo  16. Compilar APK Android      (CIERRA el servidor web primero)
+echo  16. Compilar APK Android
 echo.
 echo   0. Salir
 echo.
@@ -54,6 +55,7 @@ if "%OPT%"=="13" goto MOVIL_EXT
 if "%OPT%"=="14" goto ABRIR_PUERTOS
 if "%OPT%"=="15" goto TODOS_EXT
 if "%OPT%"=="16" goto BUILD_APK
+if "%OPT%"=="17" goto MOSQUITTO
 if "%OPT%"=="0"  goto FIN
 
 echo.
@@ -149,11 +151,14 @@ cls
 echo.
 echo  Probando conexion MQTT...
 echo.
-for /f "tokens=2 delims==" %%A in ('findstr /i "MQTT_BROKER_URL" "%~dp0backend\.env" 2^>nul') do set "MQTT_URL=%%A"
-echo  Configurado en .env: %MQTT_URL%
+echo  Broker local: localhost:1883
 echo.
 powershell -NoProfile -Command ^
-  "try { $c = New-Object System.Net.Sockets.TcpClient; $r = $c.BeginConnect('broker-url',1883,$null,$null); $ok = $r.AsyncWaitHandle.WaitOne(4000); if($ok -and $c.Connected){ Write-Host '  [OK] Puerto 1883 alcanzable' -ForegroundColor Green }else{ Write-Host '  [WARN] Puerto 1883 no alcanzable - backend usara modo simulacion' -ForegroundColor Yellow }; $c.Close() } catch { Write-Host '  [WARN] No se pudo probar (configura MQTT_BROKER_URL en .env)' -ForegroundColor Yellow }"
+  "try { $c = New-Object System.Net.Sockets.TcpClient; $r = $c.BeginConnect('localhost',1883,$null,$null); $ok = $r.AsyncWaitHandle.WaitOne(4000); if($ok -and $c.Connected){ Write-Host '  [OK] Broker MQTT respondiendo en localhost:1883' -ForegroundColor Green }else{ Write-Host '  [FAIL] Broker no responde - verificar servicio Mosquitto' -ForegroundColor Red }; $c.Close() } catch { Write-Host '  [ERROR] No se pudo conectar a localhost:1883' -ForegroundColor Red }"
+echo.
+echo  Estado del servicio Mosquitto:
+powershell -NoProfile -Command ^
+  "$s=Get-Service mosquitto -ErrorAction SilentlyContinue;if($s){if($s.Status -eq 'Running'){Write-Host ('  [CORRIENDO] '+$s.Status) -ForegroundColor Green}else{Write-Host ('  [DETENIDO] '+$s.Status) -ForegroundColor Red}}else{Write-Host '  [NO INSTALADO]' -ForegroundColor Red}"
 echo.
 pause
 goto MENU
@@ -326,27 +331,23 @@ echo  ================================================
 echo   COMPILAR APK ANDROID
 echo  ================================================
 echo.
-echo  IMPORTANTE: Cierra el servidor Flutter web (puerto 4000)
-echo  antes de continuar, de lo contrario se caera el servicio.
-echo.
-set "CONFIRM="
-set /p CONFIRM="  Ya cerraste el servidor Flutter web? (s/n): "
-if /i not "%CONFIRM%"=="s" (
-  echo.
-  echo  Operacion cancelada. Cierra el servidor y vuelve a intentar.
-  echo.
-  pause
-  goto MENU
-)
-echo.
 echo  Compilando APK con IP externa 34.71.132.26...
 echo  (Esto tarda varios minutos)
 echo.
 cd /d "%~dp0mobile"
-C:\flutter\bin\flutter.bat build apk --dart-define=API_URL=http://34.71.132.26:3001/api
+C:\flutter\bin\flutter.bat build apk --release --dart-define=API_URL=http://34.71.132.26:3001/api
+if %ERRORLEVEL% NEQ 0 (
+  echo.
+  echo  ERROR: La compilacion fallo.
+  echo.
+  cd /d "%~dp0"
+  pause
+  goto MENU
+)
+copy /Y "build\app\outputs\flutter-apk\app-release.apk" "build\app\outputs\flutter-apk\Acceso-Digital-iaDos.apk" >nul
 echo.
-echo  APK generada en:
-echo  mobile\build\app\outputs\flutter-apk\app-release.apk
+echo  APK lista:
+echo  mobile\build\app\outputs\flutter-apk\Acceso-Digital-iaDos.apk
 echo.
 cd /d "%~dp0"
 pause
@@ -397,6 +398,55 @@ echo   App Movil    -^> http://34.71.132.26:4000
 echo  -------------------------------------------------------
 echo.
 pause
+goto MENU
+
+::-----------------------------------------------------------------
+:MOSQUITTO
+cls
+echo.
+echo  ================================================
+echo   MOSQUITTO MQTT BROKER
+echo  ================================================
+echo.
+echo  Estado actual:
+powershell -NoProfile -Command ^
+  "$s=Get-Service mosquitto -ErrorAction SilentlyContinue;if($s){if($s.Status -eq 'Running'){Write-Host ('  [CORRIENDO] Mosquitto activo en puerto 1883') -ForegroundColor Green}else{Write-Host ('  [DETENIDO] Mosquitto no esta corriendo') -ForegroundColor Red}}else{Write-Host '  [NO INSTALADO] Mosquitto no encontrado' -ForegroundColor Red}"
+echo.
+echo  Clientes conectados (puerto 1883):
+powershell -NoProfile -Command ^
+  "$conns=Get-NetTCPConnection -LocalPort 1883 -State Established -ErrorAction SilentlyContinue;if($conns){Write-Host ('  ['+$conns.Count+' cliente(s) conectado(s)]') -ForegroundColor Cyan;$conns|ForEach-Object{Write-Host ('  - '+$_.RemoteAddress+':'+$_.RemotePort)}}else{Write-Host '  Sin clientes conectados' -ForegroundColor Yellow}"
+echo.
+echo  ------------------------------------------------
+echo   Acciones:
+echo    1. Iniciar Mosquitto
+echo    2. Detener Mosquitto
+echo    3. Reiniciar Mosquitto
+echo    0. Volver al menu
+echo  ------------------------------------------------
+echo.
+set "MOPT="
+set /p MOPT="  Selecciona: "
+
+if "%MOPT%"=="1" (
+  net start mosquitto
+  echo.
+  pause
+  goto MOSQUITTO
+)
+if "%MOPT%"=="2" (
+  net stop mosquitto
+  echo.
+  pause
+  goto MOSQUITTO
+)
+if "%MOPT%"=="3" (
+  net stop mosquitto >nul 2>&1
+  timeout /t 2 /nobreak >nul
+  net start mosquitto
+  echo.
+  pause
+  goto MOSQUITTO
+)
 goto MENU
 
 ::-----------------------------------------------------------------

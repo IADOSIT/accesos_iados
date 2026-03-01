@@ -1,11 +1,15 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/dashboard/presentation/dashboard_screen.dart';
 import 'features/access/presentation/access_screen.dart';
 import 'features/visitors/presentation/visitors_screen.dart';
 import 'features/payments/presentation/payments_screen.dart';
+import 'features/notifications/presentation/notifications_screen.dart';
+import 'features/notifications/providers/notifications_provider.dart';
 import 'shared/providers/auth_provider.dart';
 import 'core/constants/app_colors.dart';
 
@@ -49,6 +53,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/payments',
             builder: (_, __) => const PaymentsScreen(),
           ),
+          GoRoute(
+            path: '/notifications',
+            builder: (_, __) => const NotificationsScreen(),
+          ),
         ],
       ),
     ],
@@ -66,14 +74,12 @@ class _MainShell extends ConsumerStatefulWidget {
 class _MainShellState extends ConsumerState<_MainShell> {
   int _currentIndex = 0;
 
-  // Tabs visibles por rol
-  // ADMIN/GUARD: Inicio, Accesos, Visitantes (solo ADMIN), Pagos (solo ADMIN)
-  // RESIDENT: Inicio, Visitantes, Pagos
   static const _allTabs = [
-    (path: '/dashboard', icon: Icons.grid_view_rounded,      label: 'Inicio',     roles: <String>['ADMIN','GUARD','RESIDENT']),
-    (path: '/access',    icon: Icons.swap_horiz_rounded,     label: 'Accesos',    roles: <String>['ADMIN','GUARD']),
-    (path: '/visitors',  icon: Icons.qr_code_scanner_rounded, label: 'Visitantes', roles: <String>['ADMIN','RESIDENT']),
-    (path: '/payments',  icon: Icons.receipt_long_rounded,   label: 'Pagos',      roles: <String>['ADMIN','RESIDENT']),
+    (path: '/dashboard',      icon: Icons.grid_view_rounded,        label: 'Inicio',       roles: <String>['ADMIN','GUARD','RESIDENT']),
+    (path: '/access',         icon: Icons.swap_horiz_rounded,       label: 'Accesos',      roles: <String>['ADMIN','GUARD']),
+    (path: '/visitors',       icon: Icons.qr_code_scanner_rounded,  label: 'Visitantes',   roles: <String>['ADMIN','RESIDENT']),
+    (path: '/payments',       icon: Icons.receipt_long_rounded,     label: 'Pagos',        roles: <String>['ADMIN','RESIDENT']),
+    (path: '/notifications',  icon: Icons.notifications_rounded,    label: 'Alertas',      roles: <String>['ADMIN','GUARD','RESIDENT']),
   ];
 
   List<({String path, IconData icon, String label, List<String> roles})> _visibleTabs(String? role) {
@@ -82,11 +88,21 @@ class _MainShellState extends ConsumerState<_MainShell> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Escuchar push en foreground para refrescar badge
+    if (!kIsWeb) {
+      FirebaseMessaging.onMessage.listen((_) {
+        ref.invalidate(unreadCountProvider);
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final role = ref.watch(authProvider).role;
     final tabs = _visibleTabs(role);
 
-    // Ajustar índice si es mayor que los tabs disponibles
     final safeIndex = _currentIndex < tabs.length ? _currentIndex : 0;
 
     return Scaffold(
@@ -101,12 +117,21 @@ class _MainShellState extends ConsumerState<_MainShell> {
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: tabs.asMap().entries.map((e) => _NavItem(
-                icon: e.value.icon,
-                label: e.value.label,
-                isSelected: safeIndex == e.key,
-                onTap: () => _navigate(e.key, tabs),
-              )).toList(),
+              children: tabs.asMap().entries.map((e) {
+                final isNotifications = e.value.path == '/notifications';
+                if (isNotifications) {
+                  return _NotificationNavItem(
+                    isSelected: safeIndex == e.key,
+                    onTap: () => _navigate(e.key, tabs),
+                  );
+                }
+                return _NavItem(
+                  icon: e.value.icon,
+                  label: e.value.label,
+                  isSelected: safeIndex == e.key,
+                  onTap: () => _navigate(e.key, tabs),
+                );
+              }).toList(),
             ),
           ),
         ),
@@ -154,6 +179,75 @@ class _NavItem extends StatelessWidget {
             const SizedBox(height: 3),
             Text(
               label,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Tab de notificaciones con badge de no leídas
+class _NotificationNavItem extends ConsumerWidget {
+  final bool isSelected;
+  final VoidCallback onTap;
+  const _NotificationNavItem({required this.isSelected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final countAsync = ref.watch(unreadCountProvider);
+    final count = countAsync.valueOrNull ?? 0;
+    final color = isSelected ? AppColors.primary : AppColors.textMuted;
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primaryGlow : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(Icons.notifications_rounded, color: color, size: 22),
+                if (count > 0)
+                  Positioned(
+                    top: -4,
+                    right: -6,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: const BoxDecoration(
+                        color: AppColors.error,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                      child: Text(
+                        count > 99 ? '99+' : '$count',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'Alertas',
               style: TextStyle(
                 color: color,
                 fontSize: 11,

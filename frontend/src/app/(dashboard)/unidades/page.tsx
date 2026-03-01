@@ -7,6 +7,8 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 
+const emptyForm = { identifier: '', block: '', ownerName: '', ownerPhone: '', ownerEmail: '' };
+
 export default function UnidadesPage() {
   const { user } = useAuthStore();
   const tenantName = user?.tenants?.[0]?.tenantName || '-';
@@ -14,7 +16,10 @@ export default function UnidadesPage() {
   const [units, setUnits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ identifier: '', block: '', ownerName: '', ownerPhone: '', ownerEmail: '' });
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editRow, setEditRow] = useState<any>(null);
+  const [form, setForm] = useState({ ...emptyForm });
+  const [editForm, setEditForm] = useState({ ...emptyForm });
   const [search, setSearch] = useState('');
 
   const load = () => {
@@ -32,7 +37,28 @@ export default function UnidadesPage() {
     try {
       await unitsApi.create(form);
       setShowModal(false);
-      setForm({ identifier: '', block: '', ownerName: '', ownerPhone: '', ownerEmail: '' });
+      setForm({ ...emptyForm });
+      load();
+    } catch (err) { alert(err instanceof Error ? err.message : 'Error'); }
+  };
+
+  const handleEditOpen = (row: any) => {
+    setEditRow(row);
+    setEditForm({
+      identifier: row.identifier || '',
+      block: row.block || '',
+      ownerName: row.ownerName || '',
+      ownerPhone: row.ownerPhone || '',
+      ownerEmail: row.ownerEmail || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await unitsApi.update(editRow.id, editForm);
+      setShowEditModal(false);
       load();
     } catch (err) { alert(err instanceof Error ? err.message : 'Error'); }
   };
@@ -72,6 +98,9 @@ export default function UnidadesPage() {
     { key: 'residents', header: 'Residentes', render: (row: any) => <span className="badge-info">{row.residents?.length || 0}</span> },
     { key: 'actions', header: 'Acciones', render: (row: any) => (
       <div className="flex gap-2">
+        <button onClick={() => handleEditOpen(row)} className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200">
+          Editar
+        </button>
         <button onClick={() => handleToggle(row)}
           className={`text-xs px-2 py-1 rounded ${row.isActive !== false ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}>
           {row.isActive !== false ? 'Desactivar' : 'Activar'}
@@ -82,6 +111,37 @@ export default function UnidadesPage() {
       </div>
     )},
   ];
+
+  const UnitForm = ({ values, onChange, onSubmit, onClose, submitLabel }: any) => (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Identificador *</label>
+        <input className="input-field" value={values.identifier} onChange={(e) => onChange({ ...values, identifier: e.target.value })} required />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Bloque / Sección</label>
+        <input className="input-field" value={values.block} onChange={(e) => onChange({ ...values, block: e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Propietario</label>
+        <input className="input-field" value={values.ownerName} onChange={(e) => onChange({ ...values, ownerName: e.target.value })} />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
+          <input className="input-field" value={values.ownerPhone} onChange={(e) => onChange({ ...values, ownerPhone: e.target.value })} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+          <input className="input-field" type="email" value={values.ownerEmail} onChange={(e) => onChange({ ...values, ownerEmail: e.target.value })} />
+        </div>
+      </div>
+      <div className="flex justify-end gap-3 pt-2">
+        <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
+        <button type="submit" className="btn-primary">{submitLabel}</button>
+      </div>
+    </form>
+  );
 
   return (
     <div>
@@ -95,34 +155,11 @@ export default function UnidadesPage() {
       <DataTable columns={columns} data={units} loading={loading} emptyMessage="No hay unidades registradas" />
 
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Nueva Unidad">
-        <form onSubmit={handleCreate} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Identificador *</label>
-            <input className="input-field" value={form.identifier} onChange={(e) => setForm({ ...form, identifier: e.target.value })} required />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Bloque / Sección</label>
-            <input className="input-field" value={form.block} onChange={(e) => setForm({ ...form, block: e.target.value })} />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Propietario</label>
-            <input className="input-field" value={form.ownerName} onChange={(e) => setForm({ ...form, ownerName: e.target.value })} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
-              <input className="input-field" value={form.ownerPhone} onChange={(e) => setForm({ ...form, ownerPhone: e.target.value })} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-              <input className="input-field" type="email" value={form.ownerEmail} onChange={(e) => setForm({ ...form, ownerEmail: e.target.value })} />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">Cancelar</button>
-            <button type="submit" className="btn-primary">Crear unidad</button>
-          </div>
-        </form>
+        <UnitForm values={form} onChange={setForm} onSubmit={handleCreate} onClose={() => setShowModal(false)} submitLabel="Crear unidad" />
+      </Modal>
+
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Editar Unidad">
+        <UnitForm values={editForm} onChange={setEditForm} onSubmit={handleEditSubmit} onClose={() => setShowEditModal(false)} submitLabel="Guardar cambios" />
       </Modal>
     </div>
   );

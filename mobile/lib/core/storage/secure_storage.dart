@@ -19,6 +19,7 @@ class SecureStorage {
   static const _keyTenantSlug = 'tenant_slug';
   static const _keyFirstName = 'user_first_name';
   static const _keyLastName = 'user_last_name';
+  static const _keyFCMToken = 'fcm_token';
 
   // En web usa SharedPreferences, en móvil usa FlutterSecureStorage
   Future<void> _write(String key, String value) async {
@@ -74,6 +75,9 @@ class SecureStorage {
 
   Future<void> saveLastName(String name) => _write(_keyLastName, name);
   Future<String?> getLastName() => _read(_keyLastName);
+
+  Future<void> saveFCMToken(String token) => _write(_keyFCMToken, token);
+  Future<String?> getFCMToken() => _read(_keyFCMToken);
 
   Future<void> saveSession({
     required String token,

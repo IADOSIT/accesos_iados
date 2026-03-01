@@ -1,5 +1,6 @@
 const prisma = require('../../config/database');
 const unitsService = require('../units/units.service');
+const notif = require('../../services/notification');
 
 async function createCharge(tenantId, data) {
   const charge = await prisma.charge.create({
@@ -7,6 +8,10 @@ async function createCharge(tenantId, data) {
   });
   // Recalcular morosidad
   await unitsService.checkDelinquency(tenantId);
+  // Notificar nuevo cargo a la unidad
+  if (data.unitId) {
+    notif.sendToUnit(tenantId, data.unitId, 'NEW_CHARGE', 'Nuevo cargo registrado', `${data.description || 'Cargo'} — $${data.amount}`, { chargeId: charge.id });
+  }
   return charge;
 }
 
@@ -30,6 +35,10 @@ async function createPayment(tenantId, data) {
 
   // Recalcular morosidad
   await unitsService.checkDelinquency(tenantId);
+  // Notificar pago confirmado a la unidad
+  if (data.unitId) {
+    notif.sendToUnit(tenantId, data.unitId, 'PAYMENT_CONFIRMED', 'Pago recibido', `Tu pago de $${data.amount} fue registrado`, { paymentId: payment.id });
+  }
   return payment;
 }
 
@@ -94,4 +103,33 @@ async function getDelinquentUnits(tenantId) {
   });
 }
 
-module.exports = { createCharge, createPayment, getCharges, getPayments, reconcile, getDelinquentUnits };
+async function bulkPayments(tenantId, { month, year, payments }) {
+  const paid = payments.filter(p => p.paid && Number(p.amount) > 0);
+  if (paid.length > 0) {
+    const ref = `CSV-${year}-${String(month).padStart(2, '0')}`;
+    await Promise.all(
+      paid.map(p =>
+        prisma.payment.create({
+          data: {
+            tenantId,
+            unitId: p.unitId,
+            amount: Number(p.amount),
+            method: 'TRANSFER',
+            reference: ref,
+            notes: 'Carga masiva CSV',
+            reconciled: false,
+          },
+        })
+      )
+    );
+    await unitsService.checkDelinquency(tenantId);
+  }
+  return {
+    total: payments.length,
+    paid: paid.length,
+    pending: payments.length - paid.length,
+    amount: paid.reduce((s, p) => s + Number(p.amount), 0),
+  };
+}
+
+module.exports = { createCharge, createPayment, getCharges, getPayments, reconcile, getDelinquentUnits, bulkPayments };

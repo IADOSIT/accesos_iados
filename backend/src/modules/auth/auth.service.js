@@ -111,4 +111,8 @@ async function changePassword(userId, currentPassword, newPassword) {
   await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
 }
 
-module.exports = { login, register, refreshAccessToken, changePassword };
+async function updateFCMToken(userId, token) {
+  await prisma.user.update({ where: { id: userId }, data: { fcmToken: token } });
+}
+
+module.exports = { login, register, refreshAccessToken, changePassword, updateFCMToken };
