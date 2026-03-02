@@ -24,7 +24,7 @@ jobs:
           cache: true
 
       - name: Instalar dependencias
-        run: flutter pub get
+        run: flutter pub upgrade
 
       - name: Actualizar repo de CocoaPods
         run: |
