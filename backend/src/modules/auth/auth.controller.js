@@ -40,7 +40,12 @@ async function changePassword(req, res) {
 }
 
 async function me(req, res) {
-  return success(res, req.user);
+  try {
+    const data = await authService.getMe(req.user.id);
+    return success(res, data);
+  } catch (err) {
+    return error(res, err.message, err.status || 500);
+  }
 }
 
 async function updateFCMToken(req, res) {

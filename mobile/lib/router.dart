@@ -9,9 +9,12 @@ import 'features/access/presentation/access_screen.dart';
 import 'features/visitors/presentation/visitors_screen.dart';
 import 'features/payments/presentation/payments_screen.dart';
 import 'features/notifications/presentation/notifications_screen.dart';
+import 'features/profile/presentation/profile_screen.dart';
+import 'features/auth/presentation/force_change_password_screen.dart';
 import 'features/notifications/providers/notifications_provider.dart';
 import 'shared/providers/auth_provider.dart';
 import 'core/constants/app_colors.dart';
+import 'core/constants/app_colors_scheme.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final notifier = _AuthRouteNotifier(ref);
@@ -22,11 +25,21 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final isAuth = notifier.isAuthenticated;
       final isLoading = notifier.isLoading;
-      final isLoginPage = state.matchedLocation == '/login';
+      final mustChange = notifier.mustChangePassword;
+      final loc = state.matchedLocation;
 
       if (isLoading) return null;
-      if (!isAuth && !isLoginPage) return '/login';
-      if (isAuth && isLoginPage) return '/dashboard';
+      if (!isAuth && loc != '/login') return '/login';
+      if (isAuth && loc == '/login') {
+        return mustChange ? '/force-change-password' : '/dashboard';
+      }
+      if (isAuth && mustChange && loc != '/force-change-password') {
+        return '/force-change-password';
+      }
+      // Contraseña ya cambiada: salir de la pantalla de cambio forzado
+      if (isAuth && !mustChange && loc == '/force-change-password') {
+        return '/dashboard';
+      }
       return null;
     },
     routes: [
@@ -58,6 +71,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, __) => const NotificationsScreen(),
           ),
         ],
+      ),
+      GoRoute(
+        path: '/profile',
+        builder: (_, __) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: '/force-change-password',
+        builder: (_, __) => const ForceChangePasswordScreen(),
       ),
     ],
   );
@@ -107,34 +128,39 @@ class _MainShellState extends ConsumerState<_MainShell> {
 
     return Scaffold(
       body: widget.child,
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.bgSurface,
-          border: Border(top: BorderSide(color: AppColors.border, width: 1)),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: tabs.asMap().entries.map((e) {
-                final isNotifications = e.value.path == '/notifications';
-                if (isNotifications) {
-                  return _NotificationNavItem(
-                    isSelected: safeIndex == e.key,
-                    onTap: () => _navigate(e.key, tabs),
-                  );
-                }
-                return _NavItem(
-                  icon: e.value.icon,
-                  label: e.value.label,
-                  isSelected: safeIndex == e.key,
-                  onTap: () => _navigate(e.key, tabs),
-                );
-              }).toList(),
+      bottomNavigationBar: Builder(
+        builder: (context) {
+          final c = context.colors;
+          return Container(
+            decoration: BoxDecoration(
+              color: c.bgSurface,
+              border: Border(top: BorderSide(color: c.border, width: 1)),
             ),
-          ),
-        ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: tabs.asMap().entries.map((e) {
+                    final isNotifications = e.value.path == '/notifications';
+                    if (isNotifications) {
+                      return _NotificationNavItem(
+                        isSelected: safeIndex == e.key,
+                        onTap: () => _navigate(e.key, tabs),
+                      );
+                    }
+                    return _NavItem(
+                      icon: e.value.icon,
+                      label: e.value.label,
+                      isSelected: safeIndex == e.key,
+                      onTap: () => _navigate(e.key, tabs),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -160,7 +186,8 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isSelected ? AppColors.primary : AppColors.textMuted;
+    final c = context.colors;
+    final color = isSelected ? c.primary : c.textMuted;
 
     return GestureDetector(
       onTap: onTap,
@@ -169,7 +196,7 @@ class _NavItem extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primaryGlow : Colors.transparent,
+          color: isSelected ? c.primaryGlow : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -200,9 +227,10 @@ class _NotificationNavItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
     final countAsync = ref.watch(unreadCountProvider);
     final count = countAsync.valueOrNull ?? 0;
-    final color = isSelected ? AppColors.primary : AppColors.textMuted;
+    final color = isSelected ? c.primary : c.textMuted;
 
     return GestureDetector(
       onTap: onTap,
@@ -211,7 +239,7 @@ class _NotificationNavItem extends ConsumerWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primaryGlow : Colors.transparent,
+          color: isSelected ? c.primaryGlow : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -227,8 +255,8 @@ class _NotificationNavItem extends ConsumerWidget {
                     right: -6,
                     child: Container(
                       padding: const EdgeInsets.all(3),
-                      decoration: const BoxDecoration(
-                        color: AppColors.error,
+                      decoration: BoxDecoration(
+                        color: c.error,
                         shape: BoxShape.circle,
                       ),
                       constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
@@ -270,4 +298,5 @@ class _AuthRouteNotifier extends ChangeNotifier {
 
   bool get isAuthenticated => _ref.read(authProvider).isAuthenticated;
   bool get isLoading => _ref.read(authProvider).isLoading;
+  bool get mustChangePassword => _ref.read(authProvider).mustChangePassword;
 }

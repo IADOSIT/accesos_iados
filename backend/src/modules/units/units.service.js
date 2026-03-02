@@ -81,4 +81,18 @@ async function hardDelete(tenantId, id) {
   }
 }
 
-module.exports = { create, findAll, findById, update, deactivate, activate, hardDelete, checkDelinquency };
+async function bulkCreate(tenantId, rows) {
+  const results = { created: 0, skipped: 0, errors: [] };
+  for (const [i, row] of rows.entries()) {
+    try {
+      await create(tenantId, row);
+      results.created++;
+    } catch (err) {
+      if (err.status === 409) results.skipped++;
+      else results.errors.push({ row: i + 2, identifier: row.identifier, reason: err.message });
+    }
+  }
+  return results;
+}
+
+module.exports = { create, bulkCreate, findAll, findById, update, deactivate, activate, hardDelete, checkDelinquency };

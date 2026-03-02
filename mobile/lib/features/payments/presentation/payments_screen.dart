@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_colors_scheme.dart';
 import '../../../core/network/api_client.dart';
 
 final chargesProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
@@ -15,11 +15,12 @@ class PaymentsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
     final charges = ref.watch(chargesProvider);
     final currencyFmt = NumberFormat.currency(locale: 'es_MX', symbol: '\$');
 
     return Scaffold(
-      backgroundColor: AppColors.bgDark,
+      backgroundColor: c.bgMain,
       appBar: AppBar(
         title: const Text('Pagos'),
         actions: [
@@ -30,19 +31,19 @@ class PaymentsScreen extends ConsumerWidget {
         ],
       ),
       body: charges.when(
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
+        loading: () => Center(
+          child: CircularProgressIndicator(color: c.primary),
         ),
         error: (e, _) => Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, color: AppColors.error, size: 48),
+              Icon(Icons.error_outline, color: c.error, size: 48),
               const SizedBox(height: 12),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Text(e.toString(),
-                    style: const TextStyle(color: AppColors.error, fontSize: 12),
+                    style: TextStyle(color: c.error, fontSize: 12),
                     textAlign: TextAlign.center),
               ),
               const SizedBox(height: 16),
@@ -55,11 +56,9 @@ class PaymentsScreen extends ConsumerWidget {
         ),
         data: (items) => CustomScrollView(
           slivers: [
-            // Resumen total
             SliverToBoxAdapter(
               child: _PaymentSummary(charges: items, fmt: currencyFmt),
             ),
-            // Lista de cargos
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
               sliver: SliverList(
@@ -86,22 +85,21 @@ class _PaymentSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     double total = 0;
-    for (final c in charges) {
-      try {
-        total += double.parse(c['amount'].toString());
-      } catch (_) {}
+    for (final charge in charges) {
+      try { total += double.parse(charge['amount'].toString()); } catch (_) {}
     }
 
     return Container(
       margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: AppColors.primaryGradient,
+        gradient: c.primaryGradient,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
+            color: c.primary.withOpacity(0.3),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -112,10 +110,8 @@ class _PaymentSummary extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Total pendiente',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
-              ),
+              const Text('Total pendiente',
+                  style: TextStyle(color: Colors.white70, fontSize: 13)),
               const SizedBox(height: 4),
               Text(
                 fmt.format(total),
@@ -158,10 +154,12 @@ class _ChargeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
     final description = charge['description'] as String? ?? 'Cargo';
     final amount = double.tryParse(charge['amount']?.toString() ?? '0') ?? 0;
-    final paidAmount =
-        double.tryParse(charge['paidAmount']?.toString() ?? '0') ?? 0;
+    final paidAmount = double.tryParse(charge['paidAmount']?.toString() ?? '0') ?? 0;
     final remaining = amount - paidAmount;
     final type = charge['type'] as String? ?? '';
     final dueDate = charge['dueDate'] as String?;
@@ -177,16 +175,19 @@ class _ChargeCard extends StatelessWidget {
       } catch (_) {}
     }
 
-    final color = isOverdue ? AppColors.error : AppColors.warning;
+    final color = isOverdue ? c.error : c.warning;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.bgCard,
+        color: c.bgCard,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isOverdue ? AppColors.error.withOpacity(0.3) : AppColors.border,
+          color: isOverdue ? c.error.withOpacity(0.3) : c.border,
         ),
+        boxShadow: isLight
+            ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2))]
+            : null,
       ),
       child: Row(
         children: [
@@ -205,8 +206,8 @@ class _ChargeCard extends StatelessWidget {
               children: [
                 Text(
                   description,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
+                  style: TextStyle(
+                    color: c.textPrimary,
                     fontWeight: FontWeight.w600,
                     fontSize: 14,
                   ),
@@ -215,15 +216,15 @@ class _ChargeCard extends StatelessWidget {
                 Text(
                   'Vence: $dueDateStr',
                   style: TextStyle(
-                    color: isOverdue ? AppColors.error : AppColors.textMuted,
+                    color: isOverdue ? c.error : c.textMuted,
                     fontSize: 12,
                   ),
                 ),
                 if (isOverdue)
-                  const Text(
+                  Text(
                     'VENCIDO',
                     style: TextStyle(
-                      color: AppColors.error,
+                      color: c.error,
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.5,
@@ -246,10 +247,7 @@ class _ChargeCard extends StatelessWidget {
               if (paidAmount > 0)
                 Text(
                   'Pagado: ${fmt.format(paidAmount)}',
-                  style: const TextStyle(
-                    color: AppColors.success,
-                    fontSize: 11,
-                  ),
+                  style: TextStyle(color: c.success, fontSize: 11),
                 ),
             ],
           ),
@@ -260,10 +258,10 @@ class _ChargeCard extends StatelessWidget {
 
   IconData _typeIcon(String type) {
     switch (type) {
-      case 'MONTHLY': return Icons.calendar_month_outlined;
+      case 'MONTHLY':       return Icons.calendar_month_outlined;
       case 'EXTRAORDINARY': return Icons.star_outline_rounded;
-      case 'PENALTY': return Icons.warning_outlined;
-      default: return Icons.receipt_outlined;
+      case 'PENALTY':       return Icons.warning_outlined;
+      default:              return Icons.receipt_outlined;
     }
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_colors_scheme.dart';
 
 // ─── Helper: logo3_ia2.png ────────────────────────────────────────────────────
 // Reemplaza el hexágono CustomPaint. Para revertir, comenta _logoImage y
@@ -37,7 +38,7 @@ class IadosLogo extends StatelessWidget {
             style: TextStyle(
               fontSize: size * 0.32,
               fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
+              color: context.colors.textPrimary,
               letterSpacing: -0.5,
             ),
           ),
@@ -46,7 +47,7 @@ class IadosLogo extends StatelessWidget {
             style: TextStyle(
               fontSize: size * 0.22,
               fontWeight: FontWeight.w500,
-              color: AppColors.primary,
+              color: context.colors.primary,
               letterSpacing: 2,
             ),
           ),
@@ -208,14 +209,14 @@ class IadosFooter extends StatelessWidget {
         children: [
           _logoImage(16), // logo3_ia2.png — para revertir: _HexagonLogo(size: 16)
           const SizedBox(width: 6),
-          const Text(
+          Text(
             'iados.mx',
             style: TextStyle(
-              color: AppColors.textMuted,
+              color: context.colors.textMuted,
               fontSize: 12,
               letterSpacing: 0.5,
               decoration: TextDecoration.underline,
-              decorationColor: AppColors.textMuted,
+              decorationColor: context.colors.textMuted,
             ),
           ),
         ],

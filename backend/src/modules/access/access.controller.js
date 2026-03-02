@@ -54,4 +54,22 @@ async function revokeQR(req, res) {
   }
 }
 
-module.exports = { openGate, generateQR, getQRCodes, getLogs, revokeQR };
+async function generateQuickQR(req, res) {
+  try {
+    const qr = await svc.createQuickQr(req.tenantId, req.user.id, req.body);
+    return success(res, qr, 'QR rápido generado', 201);
+  } catch (err) {
+    return error(res, err.message, err.status || 500);
+  }
+}
+
+async function getPublicQR(req, res) {
+  try {
+    const qr = await svc.getPublicQR(req.params.code);
+    return success(res, qr);
+  } catch (err) {
+    return error(res, err.message, err.status || 500);
+  }
+}
+
+module.exports = { openGate, generateQR, getQRCodes, getLogs, revokeQR, generateQuickQR, getPublicQR };

@@ -94,4 +94,47 @@ function sendToAll(tenantId, type, title, body, data) {
   })().catch(err => console.error('[FCM] sendToAll error:', err.message));
 }
 
-module.exports = { sendToUser, sendToUnit, sendToRole, sendToAll };
+// Envío urgente (pánico) con sonido en Android e iOS
+async function _sendUrgent(fcmToken, title, body, data) {
+  if (!messaging || !fcmToken) return;
+  try {
+    await messaging.send({
+      token: fcmToken,
+      notification: { title, body },
+      data: data
+        ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
+        : {},
+      android: {
+        priority: 'high',
+        notification: { sound: 'default', channelId: 'panic' },
+      },
+      apns: {
+        payload: { aps: { sound: 'default', badge: 1 } },
+        headers: { 'apns-priority': '10' },
+      },
+    });
+  } catch (err) {
+    console.error('[FCM] Error enviando push urgente:', err.message);
+  }
+}
+
+// Envía notificación urgente a todos los usuarios de un rol (fire-and-forget)
+function sendUrgentToRole(tenantId, role, type, title, body, data) {
+  (async () => {
+    const memberships = await prisma.userTenant.findMany({
+      where: { tenantId, role, isActive: true },
+      select: { userId: true },
+    });
+    const userIds = [...new Set(memberships.map(m => m.userId))];
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, fcmToken: true },
+    });
+    await Promise.all(users.flatMap(u => [
+      _sendUrgent(u.fcmToken, title, body, data),
+      _save(tenantId, u.id, type, title, body, data),
+    ]));
+  })().catch(err => console.error('[FCM] sendUrgentToRole error:', err.message));
+}
+
+module.exports = { sendToUser, sendToUnit, sendToRole, sendToAll, sendUrgentToRole };

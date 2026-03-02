@@ -197,6 +197,67 @@ async function revokeQR(tenantId, userId, userRole, qrId) {
   return prisma.qRCode.update({ where: { id: qrId }, data: { isActive: false } });
 }
 
+async function createQuickQr(tenantId, userId, data) {
+  // Obtener settings del tenant
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+  const settings = (tenant?.settings && typeof tenant.settings === 'object') ? tenant.settings : {};
+  const flags = (settings.featureFlags && typeof settings.featureFlags === 'object') ? settings.featureFlags : {};
+
+  if (!flags.quickQrEnabled) {
+    throw { status: 403, message: 'QR rápido no habilitado para este fraccionamiento' };
+  }
+
+  // Obtener unidad del usuario
+  const ut = await prisma.userTenant.findUnique({
+    where: { userId_tenantId: { userId, tenantId } },
+  });
+  if (!ut?.unitId) throw { status: 400, message: 'Usuario sin unidad asignada' };
+
+  const durationHours = flags.quickQrDurationHours ?? 2;
+  const maxUses = flags.quickQrMaxUses ?? 3;
+
+  const code = `IAD-${uuidv4().slice(0, 8).toUpperCase()}`;
+  const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000);
+
+  const qr = await prisma.qRCode.create({
+    data: {
+      tenantId,
+      unitId: ut.unitId,
+      userId,
+      code,
+      visitorName: data.category || 'Visita rápida',
+      maxUses,
+      expiresAt,
+      category: data.category,
+      isQuick: true,
+    },
+  });
+
+  const portalUrl = process.env.PORTAL_URL || 'http://34.71.132.26:3002';
+
+  return { ...qr, externalUrl: `${portalUrl}/qr/${qr.code}` };
+}
+
+async function getPublicQR(code) {
+  const qr = await prisma.qRCode.findUnique({
+    where: { code },
+    select: {
+      id: true,
+      code: true,
+      visitorName: true,
+      category: true,
+      isQuick: true,
+      maxUses: true,
+      usedCount: true,
+      expiresAt: true,
+      isActive: true,
+      unit: { select: { identifier: true } },
+    },
+  });
+  if (!qr) throw { status: 404, message: 'Código QR no encontrado' };
+  return qr;
+}
+
 async function cleanupExpiredQRs() {
   const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const result = await prisma.qRCode.deleteMany({
@@ -208,4 +269,58 @@ async function cleanupExpiredQRs() {
   return result.count;
 }
 
-module.exports = { openGate, generateQR, getQRCodes, getLogs, revokeQR, cleanupExpiredQRs };
+// ── Botón de pánico ────────────────────────────────────────────
+const PANIC_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutos
+
+async function triggerPanic(userId, tenantId) {
+  // Cooldown: verificar si ya activó pánico en los últimos 5 minutos
+  const since = new Date(Date.now() - PANIC_COOLDOWN_MS);
+  const recent = await prisma.panicAlert.findFirst({
+    where: { userId, tenantId, createdAt: { gte: since } },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (recent) {
+    const elapsed = Date.now() - new Date(recent.createdAt).getTime();
+    const remainingSeconds = Math.ceil((PANIC_COOLDOWN_MS - elapsed) / 1000);
+    throw { status: 429, message: `Alerta reciente. Espera ${remainingSeconds} segundos.`, remainingSeconds };
+  }
+
+  // Obtener info del usuario y su unidad
+  const membership = await prisma.userTenant.findUnique({
+    where: { userId_tenantId: { userId, tenantId } },
+    include: {
+      user:   { select: { firstName: true, lastName: true } },
+      unit:   { select: { id: true, identifier: true } },
+      tenant: { select: { name: true } },
+    },
+  });
+
+  const userName  = `${membership?.user?.firstName || ''} ${membership?.user?.lastName || ''}`.trim() || 'Un usuario';
+  const unitLabel = membership?.unit?.identifier ? `Unidad ${membership.unit.identifier}` : null;
+  const tenantName = membership?.tenant?.name || 'Fraccionamiento';
+
+  // Guardar en BD
+  await prisma.panicAlert.create({
+    data: {
+      tenantId,
+      userId,
+      unitId:    membership?.unit?.id    ?? null,
+      userName,
+      unitLabel: unitLabel ?? null,
+    },
+  });
+
+  // Enviar notificación urgente a ADMIN y GUARD
+  const title = `🚨 EMERGENCIA — ${tenantName}`;
+  const body  = unitLabel
+    ? `${userName} (${unitLabel}) activó el botón de pánico`
+    : `${userName} activó el botón de pánico`;
+  const data  = { type: 'PANIC', userId };
+
+  notif.sendUrgentToRole(tenantId, 'ADMIN', 'PANIC', title, body, data);
+  notif.sendUrgentToRole(tenantId, 'GUARD', 'PANIC', title, body, data);
+
+  return { cooldownSeconds: PANIC_COOLDOWN_MS / 1000 };
+}
+
+module.exports = { openGate, generateQR, getQRCodes, getLogs, revokeQR, cleanupExpiredQRs, createQuickQr, getPublicQR, triggerPanic };

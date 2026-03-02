@@ -40,6 +40,7 @@ async function login(email, password) {
   return {
     accessToken,
     refreshToken,
+    mustChangePassword: user.mustChangePassword,
     user: {
       id: user.id,
       email: user.email,
@@ -108,11 +109,46 @@ async function changePassword(userId, currentPassword, newPassword) {
     throw { status: 400, message: 'Contraseña actual incorrecta' };
   }
   const passwordHash = await bcrypt.hash(newPassword, 12);
-  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash, mustChangePassword: false } });
 }
 
 async function updateFCMToken(userId, token) {
   await prisma.user.update({ where: { id: userId }, data: { fcmToken: token } });
 }
 
-module.exports = { login, register, refreshAccessToken, changePassword, updateFCMToken };
+async function getMe(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      tenants: {
+        where: { isActive: true },
+        include: {
+          tenant: { select: { id: true, name: true, isActive: true } },
+          unit: { select: { id: true, identifier: true, block: true, floor: true } },
+        },
+      },
+    },
+  });
+  if (!user || !user.isActive) throw { status: 404, message: 'Usuario no encontrado' };
+
+  return {
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    phone: user.phone,
+    avatarUrl: user.avatarUrl,
+    isSuperAdmin: user.isSuperAdmin,
+    tenants: user.tenants
+      .filter(t => t.tenant.isActive)
+      .map(t => ({
+        tenantId: t.tenantId,
+        tenantName: t.tenant.name,
+        role: t.role,
+        unitId: t.unitId,
+        unit: t.unit,
+      })),
+  };
+}
+
+module.exports = { login, register, refreshAccessToken, changePassword, updateFCMToken, getMe };

@@ -297,7 +297,7 @@ echo   App URL:  http://34.71.132.26:4000
 echo  (Presiona CTRL+C para detener)
 echo.
 cd /d "%~dp0mobile"
-C:\flutter\bin\flutter.bat run -d web-server --web-port 4000 --web-hostname 0.0.0.0 --dart-define=API_URL=http://34.71.132.26:3001/api
+C:\flutter\bin\flutter.bat run -d web-server --web-port 4000 --web-hostname 0.0.0.0 --dart-define=API_URL=http://34.71.132.26:3001/api --dart-define=PORTAL_URL=http://34.71.132.26:3002
 cd /d "%~dp0"
 echo.
 pause
@@ -313,7 +313,7 @@ start "iaDoS Backend :3001" cmd /k "cd /d %~dp0backend && node src/index.js"
 timeout /t 3 /nobreak >nul
 start "iaDoS Frontend :3002 [EXT]" cmd /k "set NEXT_PUBLIC_API_URL=http://34.71.132.26:3001/api&& cd /d %~dp0frontend && npm run dev"
 timeout /t 3 /nobreak >nul
-start "iaDoS App Movil :4000 [EXT]" cmd /k "cd /d %~dp0mobile && C:\flutter\bin\flutter.bat run -d web-server --web-port 4000 --web-hostname 0.0.0.0 --dart-define=API_URL=http://34.71.132.26:3001/api"
+start "iaDoS App Movil :4000 [EXT]" cmd /k "cd /d %~dp0mobile && C:\flutter\bin\flutter.bat run -d web-server --web-port 4000 --web-hostname 0.0.0.0 --dart-define=API_URL=http://34.71.132.26:3001/api --dart-define=PORTAL_URL=http://34.71.132.26:3002"
 echo.
 echo  Servicios iniciados (acceso externo):
 echo   Backend   -^> http://34.71.132.26:3001/api/health
@@ -335,7 +335,7 @@ echo  Compilando APK con IP externa 34.71.132.26...
 echo  (Esto tarda varios minutos)
 echo.
 cd /d "%~dp0mobile"
-C:\flutter\bin\flutter.bat build apk --release --dart-define=API_URL=http://34.71.132.26:3001/api
+C:\flutter\bin\flutter.bat build apk --release --dart-define=API_URL=http://34.71.132.26:3001/api --dart-define=PORTAL_URL=http://34.71.132.26:3002
 if %ERRORLEVEL% NEQ 0 (
   echo.
   echo  ERROR: La compilacion fallo.

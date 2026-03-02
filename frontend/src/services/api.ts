@@ -17,6 +17,7 @@ export const unitsApi = {
   deactivate: (id: string) => POST(`/units/${id}/deactivate`, {}),
   activate: (id: string) => POST(`/units/${id}/activate`, {}),
   remove: (id: string) => DELETE(`/units/${id}`),
+  bulk: (data: { rows: object[] }) => POST('/units/bulk', data),
 };
 
 // ============ USUARIOS ============
@@ -28,6 +29,7 @@ export const usersApi = {
   deactivate: (id: string) => POST(`/users/${id}/deactivate`, {}),
   activate: (id: string) => POST(`/users/${id}/activate`, {}),
   remove: (id: string) => DELETE(`/users/${id}`),
+  bulk: (data: { rows: object[] }) => POST('/users/bulk', data),
 };
 
 // ============ DISPOSITIVOS ============
@@ -45,6 +47,7 @@ export const devicesApi = {
 export const accessApi = {
   open: (data: unknown) => POST('/access/open', data),
   generateQR: (data: unknown) => POST('/access/qr', data),
+  generateQuickQR: (data: unknown) => POST('/access/qr/quick', data),
   logs: (params?: string) => GET(`/access/logs${params ? `?${params}` : ''}`),
 };
 

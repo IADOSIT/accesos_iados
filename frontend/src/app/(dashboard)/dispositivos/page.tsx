@@ -6,7 +6,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
 
-const emptyForm = { name: '', type: 'GATE', mqttTopic: '', location: '' };
+const emptyForm = { name: '', type: 'GATE', accessType: 'GENERAL', mqttTopic: '', location: '' };
 
 export default function DispositivosPage() {
   const [devices, setDevices] = useState<any[]>([]);
@@ -42,6 +42,7 @@ export default function DispositivosPage() {
     setEditForm({
       name: row.name || '',
       type: row.type || 'GATE',
+      accessType: row.accessType || 'GENERAL',
       mqttTopic: row.mqttTopic || '',
       location: row.location || '',
     });
@@ -75,10 +76,12 @@ export default function DispositivosPage() {
 
   const typeLabels: Record<string, string> = { GATE: 'Portón', DOOR: 'Puerta', BARRIER: 'Pluma' };
   const statusLabels: Record<string, string> = { ONLINE: 'En línea', OFFLINE: 'Desconectado', ERROR: 'Error' };
+  const accessTypeLabels: Record<string, string> = { RESIDENT: 'Residentes', VISITOR: 'Visitas', GENERAL: 'General' };
 
   const columns = [
     { key: 'name', header: 'Nombre' },
     { key: 'type', header: 'Tipo', render: (row: any) => typeLabels[row.type] || row.type },
+    { key: 'accessType', header: 'Uso', render: (row: any) => accessTypeLabels[row.accessType] || row.accessType || 'General' },
     { key: 'status', header: 'Conexión', render: (row: any) => (
       <span className={row.status === 'ONLINE' ? 'badge-success' : row.status === 'ERROR' ? 'badge-danger' : 'badge-warning'}>
         {statusLabels[row.status] || row.status}
@@ -123,9 +126,17 @@ export default function DispositivosPage() {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Ubicación</label>
-          <input className="input-field" value={values.location} onChange={(e) => onChange({ ...values, location: e.target.value })} />
+          <label className="block text-sm font-medium text-slate-700 mb-1">Acceso para</label>
+          <select className="input-field" value={values.accessType} onChange={(e) => onChange({ ...values, accessType: e.target.value })}>
+            <option value="GENERAL">General</option>
+            <option value="RESIDENT">Residentes</option>
+            <option value="VISITOR">Visitas</option>
+          </select>
         </div>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Ubicación</label>
+        <input className="input-field" value={values.location} onChange={(e) => onChange({ ...values, location: e.target.value })} />
       </div>
       <div>
         <label className="block text-sm font-medium text-slate-700 mb-1">MQTT Topic</label>

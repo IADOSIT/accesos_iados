@@ -16,6 +16,7 @@ class AuthState {
   final String? lastName;
   final bool isLoading;
   final String? error;
+  final bool mustChangePassword;
 
   const AuthState({
     this.isAuthenticated = false,
@@ -28,6 +29,7 @@ class AuthState {
     this.lastName,
     this.isLoading = false,
     this.error,
+    this.mustChangePassword = false,
   });
 
   bool get isAdmin => role == 'ADMIN';
@@ -50,6 +52,7 @@ class AuthState {
     String? lastName,
     bool? isLoading,
     String? error,
+    bool? mustChangePassword,
   }) =>
       AuthState(
         isAuthenticated: isAuthenticated ?? this.isAuthenticated,
@@ -62,6 +65,7 @@ class AuthState {
         lastName: lastName ?? this.lastName,
         isLoading: isLoading ?? this.isLoading,
         error: error,
+        mustChangePassword: mustChangePassword ?? this.mustChangePassword,
       );
 }
 
@@ -89,6 +93,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         _storage.getFirstName(),
         _storage.getLastName(),
       ]);
+      final mustChange = await _storage.getMustChangePassword();
       state = AuthState(
         isAuthenticated: true,
         tenantId: results[0],
@@ -98,6 +103,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         tenantSlug: results[4],
         firstName: results[5],
         lastName: results[6],
+        mustChangePassword: mustChange,
       );
     } else {
       state = const AuthState();
@@ -127,6 +133,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final tenantName = tenant['tenantName'] as String?;
       final firstName = user['firstName'] as String?;
       final lastName = user['lastName'] as String?;
+      final mustChange = data['mustChangePassword'] == true;
 
       await _storage.saveSession(
         token: token,
@@ -138,6 +145,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         firstName: firstName,
         lastName: lastName,
       );
+      await _storage.saveMustChangePassword(mustChange);
 
       state = AuthState(
         isAuthenticated: true,
@@ -148,6 +156,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         tenantSlug: null,
         firstName: firstName,
         lastName: lastName,
+        mustChangePassword: mustChange,
       );
       _registerFCMToken(); // fire-and-forget, no bloquea el login
       return true;
@@ -163,6 +172,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> logout() async {
     await _storage.clear();
     state = const AuthState();
+  }
+
+  Future<void> clearForceChangePassword() async {
+    await _storage.saveMustChangePassword(false);
+    state = state.copyWith(mustChangePassword: false);
   }
 
   Future<void> _registerFCMToken() async {

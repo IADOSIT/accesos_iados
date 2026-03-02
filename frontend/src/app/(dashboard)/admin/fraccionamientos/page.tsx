@@ -292,15 +292,13 @@ export default function FraccionamientosPage() {
           <div>
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Datos del fraccionamiento</p>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Nombre *</label>
-                  <input className="input-field" value={form.name} onChange={(e) => handleNameChange(e.target.value)} placeholder="Residencial Las Flores" required />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Slug (URL) *</label>
-                  <input className="input-field font-mono text-sm" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="las-flores" required />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nombre *</label>
+                <input className="input-field" value={form.name} onChange={(e) => handleNameChange(e.target.value)} placeholder="Fraccionamiento Residencial Las Flores del Valle" required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Slug (URL) *</label>
+                <input className="input-field font-mono text-sm" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="las-flores" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Dirección</label>

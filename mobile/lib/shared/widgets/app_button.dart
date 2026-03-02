@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_colors_scheme.dart';
 
 class AppButton extends StatelessWidget {
   final String label;
@@ -23,7 +23,7 @@ class AppButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = color ?? AppColors.primary;
+    final bg = color ?? context.colors.primary;
 
     final child = isLoading
         ? const SizedBox(

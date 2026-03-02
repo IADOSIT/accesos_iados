@@ -34,7 +34,8 @@ jobs:
       - name: Build iOS (sin firma)
         run: |
           flutter build ios --release --no-codesign \
-            --dart-define=API_URL=http://34.71.132.26:3001/api
+            --dart-define=API_URL=http://34.71.132.26:3001/api \
+            --dart-define=PORTAL_URL=http://34.71.132.26:3002
 
       - name: Empacar como .ipa
         run: |

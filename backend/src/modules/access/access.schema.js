@@ -17,4 +17,8 @@ const createQRSchema = z.object({
   expiresInHours: z.number().min(1).max(72).default(24),
 });
 
-module.exports = { openGateSchema, createQRSchema };
+const quickQRSchema = z.object({
+  category: z.string().min(1, 'Categoría requerida'),
+});
+
+module.exports = { openGateSchema, createQRSchema, quickQRSchema };

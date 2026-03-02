@@ -35,7 +35,8 @@ async function api<T = unknown>(endpoint: string, options: ApiOptions = {}): Pro
         window.location.href = '/login';
       }
     }
-    throw new Error(data.message || 'Error en la solicitud');
+    const details = (data.details as string[] | undefined)?.join(' | ');
+    throw new Error(details ? `${data.message}: ${details}` : (data.message || 'Error en la solicitud'));
   }
 
   return data as T;

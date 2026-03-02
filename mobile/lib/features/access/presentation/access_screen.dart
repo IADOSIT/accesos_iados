@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_colors_scheme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/providers/auth_provider.dart';
 
@@ -18,13 +18,16 @@ class AccessScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
     final logs = ref.watch(accessLogsProvider);
     final auth = ref.watch(authProvider);
     // QR scanner solo en Android/iOS — en web la cámara requiere HTTPS
     final canScan = (auth.isAdmin || auth.isGuard) && !kIsWeb;
+    // Registro manual disponible para ADMIN y GUARD en todas las plataformas
+    final canManual = auth.isAdmin || auth.isGuard;
 
     return Scaffold(
-      backgroundColor: AppColors.bgDark,
+      backgroundColor: c.bgMain,
       appBar: AppBar(
         title: const Text('Bitácora de Accesos'),
         actions: [
@@ -40,26 +43,26 @@ class AccessScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: canScan
+      floatingActionButton: canManual
           ? FloatingActionButton.extended(
               onPressed: () => _showManualAccess(context),
-              backgroundColor: AppColors.primary,
+              backgroundColor: c.primary,
               icon: const Icon(Icons.add_rounded, color: Colors.white),
               label: const Text('Registro manual', style: TextStyle(color: Colors.white)),
             )
           : null,
       body: logs.when(
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
+        loading: () => Center(
+          child: CircularProgressIndicator(color: c.primary),
         ),
         error: (e, _) => Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, color: AppColors.error, size: 48),
+              Icon(Icons.error_outline, color: c.error, size: 48),
               const SizedBox(height: 12),
               Text(e.toString(),
-                  style: const TextStyle(color: AppColors.error, fontSize: 12),
+                  style: TextStyle(color: c.error, fontSize: 12),
                   textAlign: TextAlign.center),
               const SizedBox(height: 16),
               ElevatedButton(
@@ -94,7 +97,7 @@ class AccessScreen extends ConsumerWidget {
   void _showManualAccess(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.bgCard,
+      backgroundColor: context.colors.bgCard,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -129,7 +132,6 @@ class _QRScannerScreenState extends ConsumerState<_QRScannerScreen> {
   Future<void> _onDetect(BarcodeCapture capture) async {
     if (_processing) return;
     final code = capture.barcodes.firstOrNull?.rawValue;
-    // Solo procesa códigos IAD-
     if (code == null || !code.startsWith('IAD-')) return;
 
     setState(() => _processing = true);
@@ -137,8 +139,6 @@ class _QRScannerScreenState extends ConsumerState<_QRScannerScreen> {
 
     try {
       final api = ref.read(apiClientProvider);
-
-      // Obtener dispositivos — prioriza ONLINE, multitenant automático por header
       final devRes = await api.get('/devices');
       final devices = (devRes.data['data'] as List? ?? []);
       final online = devices.where((d) => d['status'] == 'ONLINE').toList();
@@ -201,6 +201,7 @@ class _QRScannerScreenState extends ConsumerState<_QRScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -226,14 +227,16 @@ class _QRScannerScreenState extends ConsumerState<_QRScannerScreen> {
             controller: _controller,
             onDetect: _processing ? null : _onDetect,
           ),
-          if (_result == null) const _ScanOverlay(),
+          if (_result == null) _ScanOverlay(primaryColor: c.primary),
           if (_processing && _result == null)
-            const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
+            Center(
+              child: CircularProgressIndicator(color: c.primary),
             ),
           if (_result != null)
             _ResultOverlay(
               result: _result!,
+              grantedColor: c.accessGranted,
+              deniedColor: c.accessDenied,
               onScanAgain: _reset,
               onClose: () => Navigator.pop(context),
             ),
@@ -258,15 +261,16 @@ class _ScanResult {
   });
 }
 
-// ─── Overlay de cámara con recuadro de escaneo ────────────────────────────────
+// ─── Overlay de cámara ────────────────────────────────────────────────────────
 
 class _ScanOverlay extends StatelessWidget {
-  const _ScanOverlay();
+  final Color primaryColor;
+  const _ScanOverlay({required this.primaryColor});
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _OverlayPainter(),
+      painter: _OverlayPainter(primaryColor: primaryColor),
       child: Align(
         alignment: const Alignment(0, 0.55),
         child: Text(
@@ -283,6 +287,9 @@ class _ScanOverlay extends StatelessWidget {
 }
 
 class _OverlayPainter extends CustomPainter {
+  final Color primaryColor;
+  const _OverlayPainter({required this.primaryColor});
+
   @override
   void paint(Canvas canvas, Size size) {
     final boxSize = size.width * 0.68;
@@ -290,7 +297,6 @@ class _OverlayPainter extends CustomPainter {
     final boxTop = (size.height - boxSize) / 2 - 40;
     final boxRect = Rect.fromLTWH(boxLeft, boxTop, boxSize, boxSize);
 
-    // Fondo semitransparente con recorte
     final overlayPaint = Paint()..color = Colors.black.withOpacity(0.6);
     final path = Path()
       ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
@@ -298,53 +304,52 @@ class _OverlayPainter extends CustomPainter {
       ..fillType = PathFillType.evenOdd;
     canvas.drawPath(path, overlayPaint);
 
-    // Esquinas decorativas en color primary
     final cornerPaint = Paint()
-      ..color = AppColors.primary
+      ..color = primaryColor
       ..strokeWidth = 3.5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    const c = 22.0; // longitud de la esquina
+    const c = 22.0;
     final l = boxLeft;
     final t = boxTop;
     final r = boxLeft + boxSize;
     final b = boxTop + boxSize;
 
-    // Top-left
     canvas.drawLine(Offset(l, t + c), Offset(l, t), cornerPaint);
     canvas.drawLine(Offset(l, t), Offset(l + c, t), cornerPaint);
-    // Top-right
     canvas.drawLine(Offset(r - c, t), Offset(r, t), cornerPaint);
     canvas.drawLine(Offset(r, t), Offset(r, t + c), cornerPaint);
-    // Bottom-left
     canvas.drawLine(Offset(l, b - c), Offset(l, b), cornerPaint);
     canvas.drawLine(Offset(l, b), Offset(l + c, b), cornerPaint);
-    // Bottom-right
     canvas.drawLine(Offset(r - c, b), Offset(r, b), cornerPaint);
     canvas.drawLine(Offset(r, b - c), Offset(r, b), cornerPaint);
   }
 
   @override
-  bool shouldRepaint(_OverlayPainter old) => false;
+  bool shouldRepaint(_OverlayPainter old) => old.primaryColor != primaryColor;
 }
 
-// ─── Overlay de resultado (éxito/error) ──────────────────────────────────────
+// ─── Overlay de resultado ─────────────────────────────────────────────────────
 
 class _ResultOverlay extends StatelessWidget {
   final _ScanResult result;
+  final Color grantedColor;
+  final Color deniedColor;
   final VoidCallback onScanAgain;
   final VoidCallback onClose;
 
   const _ResultOverlay({
     required this.result,
+    required this.grantedColor,
+    required this.deniedColor,
     required this.onScanAgain,
     required this.onClose,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = result.granted ? AppColors.accessGranted : AppColors.accessDenied;
+    final color = result.granted ? grantedColor : deniedColor;
     final icon = result.granted ? Icons.check_circle_rounded : Icons.cancel_rounded;
 
     return Container(
@@ -358,29 +363,17 @@ class _ResultOverlay extends StatelessWidget {
           Text(
             result.message,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: color,
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-            ),
+            style: TextStyle(color: color, fontSize: 24, fontWeight: FontWeight.w700),
           ),
           if (result.deviceName.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(
-              result.deviceName,
-              style: const TextStyle(color: Colors.white54, fontSize: 14),
-            ),
+            Text(result.deviceName,
+                style: const TextStyle(color: Colors.white54, fontSize: 14)),
           ],
           if (result.code.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(
-              result.code,
-              style: const TextStyle(
-                color: Colors.white38,
-                fontSize: 12,
-                fontFamily: 'monospace',
-              ),
-            ),
+            Text(result.code,
+                style: const TextStyle(color: Colors.white38, fontSize: 12, fontFamily: 'monospace')),
           ],
           const SizedBox(height: 48),
           SizedBox(
@@ -388,14 +381,12 @@ class _ResultOverlay extends StatelessWidget {
             child: ElevatedButton.icon(
               onPressed: onScanAgain,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: color,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               icon: const Icon(Icons.qr_code_scanner_rounded, color: Colors.white),
-              label: const Text(
-                'Escanear otro',
-                style: TextStyle(color: Colors.white, fontSize: 16),
-              ),
+              label: const Text('Escanear otro',
+                  style: TextStyle(color: Colors.white, fontSize: 16)),
             ),
           ),
           const SizedBox(height: 12),
@@ -409,7 +400,7 @@ class _ResultOverlay extends StatelessWidget {
   }
 }
 
-// ─── Access Card ─────────────────────────────────────────────────────────────
+// ─── Access Card ──────────────────────────────────────────────────────────────
 
 class _AccessCard extends StatelessWidget {
   final dynamic log;
@@ -417,6 +408,9 @@ class _AccessCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
     final granted = log['granted'] as bool? ?? false;
     final method = log['method'] as String? ?? '';
     final direction = log['direction'] as String? ?? 'ENTRY';
@@ -426,7 +420,7 @@ class _AccessCard extends StatelessWidget {
     final createdAt = log['createdAt'] as String?;
     final isDelinquent = log['reason'] == 'DELINQUENT';
 
-    final color = granted ? AppColors.accessGranted : AppColors.accessDenied;
+    final color = granted ? c.accessGranted : c.accessDenied;
     final dirIcon = direction == 'ENTRY' ? Icons.login_rounded : Icons.logout_rounded;
 
     String timeStr = '';
@@ -441,11 +435,14 @@ class _AccessCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.bgCard,
+        color: c.bgCard,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isDelinquent ? AppColors.delinquent.withOpacity(0.4) : AppColors.border,
+          color: isDelinquent ? c.delinquent.withOpacity(0.4) : c.border,
         ),
+        boxShadow: isLight
+            ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2))]
+            : null,
       ),
       child: Column(
         children: [
@@ -475,8 +472,8 @@ class _AccessCard extends StatelessWidget {
                         children: [
                           Text(
                             visitorName ?? 'Residente',
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
+                            style: TextStyle(
+                              color: c.textPrimary,
                               fontWeight: FontWeight.w600,
                               fontSize: 14,
                             ),
@@ -484,16 +481,15 @@ class _AccessCard extends StatelessWidget {
                           if (isDelinquent) ...[
                             const SizedBox(width: 6),
                             Container(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                color: AppColors.delinquentBg,
+                                color: c.delinquentBg,
                                 borderRadius: BorderRadius.circular(6),
                               ),
-                              child: const Text(
+                              child: Text(
                                 'MOROSO',
                                 style: TextStyle(
-                                  color: AppColors.delinquent,
+                                  color: c.delinquent,
                                   fontSize: 9,
                                   fontWeight: FontWeight.w700,
                                   letterSpacing: 0.5,
@@ -506,19 +502,16 @@ class _AccessCard extends StatelessWidget {
                       const SizedBox(height: 3),
                       Row(
                         children: [
-                          Icon(dirIcon, size: 12, color: AppColors.textMuted),
+                          Icon(dirIcon, size: 12, color: c.textMuted),
                           const SizedBox(width: 4),
                           Text(
                             direction == 'ENTRY' ? 'Entrada' : 'Salida',
-                            style:
-                                const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                            style: TextStyle(color: c.textMuted, fontSize: 12),
                           ),
-                          const Text(' · ',
-                              style: TextStyle(color: AppColors.textMuted)),
+                          Text(' · ', style: TextStyle(color: c.textMuted)),
                           Text(
                             _methodLabel(method),
-                            style:
-                                const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                            style: TextStyle(color: c.textMuted, fontSize: 12),
                           ),
                         ],
                       ),
@@ -530,20 +523,16 @@ class _AccessCard extends StatelessWidget {
                   children: [
                     Text(
                       timeStr,
-                      style: const TextStyle(
-                        color: AppColors.textPrimary,
+                      style: TextStyle(
+                        color: c.textPrimary,
                         fontWeight: FontWeight.w600,
                         fontSize: 15,
                       ),
                     ),
-                    Text(
-                      dateStr,
-                      style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
-                    ),
+                    Text(dateStr, style: TextStyle(color: c.textMuted, fontSize: 11)),
                     const SizedBox(height: 4),
                     Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
                         color: color.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(10),
@@ -568,20 +557,15 @@ class _AccessCard extends StatelessWidget {
               child: Row(
                 children: [
                   if (visitorPlate != null) ...[
-                    const Icon(Icons.directions_car_outlined,
-                        size: 12, color: AppColors.textMuted),
+                    Icon(Icons.directions_car_outlined, size: 12, color: c.textMuted),
                     const SizedBox(width: 4),
-                    Text(visitorPlate,
-                        style:
-                            const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                    Text(visitorPlate, style: TextStyle(color: c.textMuted, fontSize: 12)),
                   ],
                   if (notes != null) ...[
                     const SizedBox(width: 12),
-                    const Icon(Icons.notes_rounded, size: 12, color: AppColors.textMuted),
+                    Icon(Icons.notes_rounded, size: 12, color: c.textMuted),
                     const SizedBox(width: 4),
-                    Text(notes,
-                        style:
-                            const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                    Text(notes, style: TextStyle(color: c.textMuted, fontSize: 12)),
                   ],
                 ],
               ),
@@ -593,18 +577,12 @@ class _AccessCard extends StatelessWidget {
 
   String _methodLabel(String method) {
     switch (method) {
-      case 'APP':
-        return 'App';
-      case 'QR':
-        return 'QR';
-      case 'GUARD_OVERRIDE':
-        return 'Guardia';
-      case 'REMOTE':
-        return 'Remoto';
-      case 'EXIT_SENSOR':
-        return 'Sensor';
-      default:
-        return method;
+      case 'APP':            return 'App';
+      case 'QR':             return 'QR';
+      case 'GUARD_OVERRIDE': return 'Guardia';
+      case 'REMOTE':         return 'Remoto';
+      case 'EXIT_SENSOR':    return 'Sensor';
+      default:               return method;
     }
   }
 }
@@ -698,6 +676,7 @@ class _ManualAccessSheetState extends ConsumerState<_ManualAccessSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
@@ -706,12 +685,12 @@ class _ManualAccessSheetState extends ConsumerState<_ManualAccessSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Registro manual de acceso',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
+                color: c.textPrimary,
               ),
             ),
             const SizedBox(height: 20),
@@ -719,19 +698,19 @@ class _ManualAccessSheetState extends ConsumerState<_ManualAccessSheet> {
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text(_devicesError!,
-                    style: const TextStyle(color: AppColors.error, fontSize: 13)),
+                    style: TextStyle(color: c.error, fontSize: 13)),
               )
             else if (_devices.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text('Cargando dispositivos...',
-                    style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                    style: TextStyle(color: c.textMuted, fontSize: 13)),
               )
             else
               DropdownButtonFormField<String>(
                 value: _selectedDeviceId,
-                dropdownColor: AppColors.bgCard,
-                style: const TextStyle(color: AppColors.textPrimary),
+                dropdownColor: c.bgCard,
+                style: TextStyle(color: c.textPrimary),
                 decoration: const InputDecoration(labelText: 'Dispositivo *'),
                 items: _devices
                     .map<DropdownMenuItem<String>>(
@@ -746,19 +725,23 @@ class _ManualAccessSheetState extends ConsumerState<_ManualAccessSheet> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(
-                    child: _DirectionButton(
+                Expanded(child: _DirectionButton(
                   label: 'Entrada',
                   icon: Icons.login_rounded,
                   selected: _direction == 'ENTRY',
+                  primaryColor: c.primary,
+                  borderColor: c.border,
+                  mutedColor: c.textMuted,
                   onTap: () => setState(() => _direction = 'ENTRY'),
                 )),
                 const SizedBox(width: 8),
-                Expanded(
-                    child: _DirectionButton(
+                Expanded(child: _DirectionButton(
                   label: 'Salida',
                   icon: Icons.logout_rounded,
                   selected: _direction == 'EXIT',
+                  primaryColor: c.primary,
+                  borderColor: c.border,
+                  mutedColor: c.textMuted,
                   onTap: () => setState(() => _direction = 'EXIT'),
                 )),
               ],
@@ -766,21 +749,20 @@ class _ManualAccessSheetState extends ConsumerState<_ManualAccessSheet> {
             const SizedBox(height: 12),
             TextField(
               controller: _nameCtrl,
-              decoration:
-                  const InputDecoration(labelText: 'Nombre del visitante (opcional)'),
-              style: const TextStyle(color: AppColors.textPrimary),
+              decoration: const InputDecoration(labelText: 'Nombre del visitante (opcional)'),
+              style: TextStyle(color: c.textPrimary),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _plateCtrl,
               decoration: const InputDecoration(labelText: 'Placa (opcional)'),
-              style: const TextStyle(color: AppColors.textPrimary),
+              style: TextStyle(color: c.textPrimary),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _notesCtrl,
               decoration: const InputDecoration(labelText: 'Notas (opcional)'),
-              style: const TextStyle(color: AppColors.textPrimary),
+              style: TextStyle(color: c.textPrimary),
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -789,10 +771,8 @@ class _ManualAccessSheetState extends ConsumerState<_ManualAccessSheet> {
                 onPressed: _loading ? null : _register,
                 child: _loading
                     ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
+                        height: 18, width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
                     : const Text('Registrar acceso'),
               ),
@@ -808,12 +788,20 @@ class _DirectionButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool selected;
+  final Color primaryColor;
+  final Color borderColor;
+  final Color mutedColor;
   final VoidCallback onTap;
-  const _DirectionButton(
-      {required this.label,
-      required this.icon,
-      required this.selected,
-      required this.onTap});
+
+  const _DirectionButton({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.primaryColor,
+    required this.borderColor,
+    required this.mutedColor,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -822,20 +810,19 @@ class _DirectionButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? AppColors.primary.withOpacity(0.15) : Colors.transparent,
+          color: selected ? primaryColor.withOpacity(0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: selected ? AppColors.primary : AppColors.border),
+          border: Border.all(color: selected ? primaryColor : borderColor),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon,
-                size: 16, color: selected ? AppColors.primary : AppColors.textMuted),
+            Icon(icon, size: 16, color: selected ? primaryColor : mutedColor),
             const SizedBox(width: 6),
             Text(
               label,
               style: TextStyle(
-                color: selected ? AppColors.primary : AppColors.textMuted,
+                color: selected ? primaryColor : mutedColor,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
@@ -847,21 +834,22 @@ class _DirectionButton extends StatelessWidget {
   }
 }
 
-// ─── Empty State ─────────────────────────────────────────────────────────────
+// ─── Empty State ──────────────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    final c = context.colors;
+    return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.history_rounded, color: AppColors.textMuted, size: 56),
-          SizedBox(height: 16),
+          Icon(Icons.history_rounded, color: c.textMuted, size: 56),
+          const SizedBox(height: 16),
           Text(
             'Sin registros de acceso',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
+            style: TextStyle(color: c.textSecondary, fontSize: 16),
           ),
         ],
       ),

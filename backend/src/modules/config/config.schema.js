@@ -24,12 +24,23 @@ const createIntegrationSchema = z.object({
 
 const updateIntegrationSchema = createIntegrationSchema.partial();
 
+const featureFlagsSchema = z.object({
+  showResidentAccessButton: z.boolean().optional(),
+  showVisitorAccessButton: z.boolean().optional(),
+  showExitButton: z.boolean().optional(),
+  quickQrEnabled: z.boolean().optional(),
+  quickQrDurationHours: z.number().int().min(1).max(24).optional(),
+  quickQrMaxUses: z.number().int().min(1).max(10).optional(),
+}).optional();
+
 const updateTenantSchema = z.object({
   name: z.string().min(1).optional(),
   address: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().email().optional(),
-  logo: z.string().url().optional(),
+  logo: z.string().optional(),
+  featureFlags: featureFlagsSchema,
+  uiTheme: z.enum(['DARK', 'LIGHT']).optional(),
 });
 
 module.exports = { createIntegrationSchema, updateIntegrationSchema, updateTenantSchema };

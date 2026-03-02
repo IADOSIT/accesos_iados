@@ -5,9 +5,11 @@ import 'package:animate_do/animate_do.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_colors_scheme.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/providers/auth_provider.dart';
+import '../../../shared/providers/tenant_config_provider.dart';
 import '../../../shared/widgets/stat_card.dart';
 import '../../../shared/widgets/iados_logo.dart';
 
@@ -34,8 +36,10 @@ class DashboardScreen extends ConsumerWidget {
     final stats = ref.watch(dashboardStatsProvider);
     final recentAccess = ref.watch(recentAccessProvider);
 
+    final tenantConfigAsync = ref.watch(tenantConfigProvider);
+
     return Scaffold(
-      backgroundColor: AppColors.bgDark,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: CustomScrollView(
         slivers: [
           // App Bar personalizado
@@ -43,15 +47,11 @@ class DashboardScreen extends ConsumerWidget {
             expandedHeight: 120,
             floating: false,
             pinned: true,
-            backgroundColor: AppColors.bgDark,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             flexibleSpace: FlexibleSpaceBar(
               background: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF0A0F1E), Color(0xFF0D1420)],
-                  ),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
                 ),
                 padding: const EdgeInsets.fromLTRB(20, 56, 20, 16),
                 child: Row(
@@ -65,18 +65,18 @@ class DashboardScreen extends ConsumerWidget {
                         children: [
                           Text(
                             auth.tenantName ?? 'Acceso Digital',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
+                              color: Theme.of(context).colorScheme.onSurface,
                               letterSpacing: -0.3,
                             ),
                           ),
                           Text(
                             _greeting(),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 13,
-                              color: AppColors.textMuted,
+                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                             ),
                           ),
                         ],
@@ -94,64 +94,83 @@ class DashboardScreen extends ConsumerWidget {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
 
-                // Stats grid
-                FadeInUp(
-                  duration: const Duration(milliseconds: 400),
-                  child: stats.when(
-                    loading: () => _StatsGrid(isLoading: true),
-                    error: (_, __) => _StatsGrid(isLoading: false, error: true),
-                    data: (data) => _StatsGrid(data: data),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // Botón abrir portón (solo ADMIN y GUARD)
-                if (auth.isAdmin || auth.isGuard)
+                // Stats grid (ADMIN y GUARD)
+                if (auth.isAdmin || auth.isGuard) ...[
                   FadeInUp(
-                    delay: const Duration(milliseconds: 200),
-                    child: const _OpenGateButton(),
+                    duration: const Duration(milliseconds: 400),
+                    child: stats.when(
+                      loading: () => _StatsGrid(isLoading: true),
+                      error: (_, __) => _StatsGrid(isLoading: false, error: true),
+                      data: (data) => _StatsGrid(data: data),
+                    ),
                   ),
+                  const SizedBox(height: 24),
+                ],
+
+                // Resumen para RESIDENT
+                if (auth.isResident) ...[
+                  FadeInUp(
+                    duration: const Duration(milliseconds: 400),
+                    child: stats.when(
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
+                      data: (data) => _ResidentSummary(data: data),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+
+                // Botones de acceso configurables
+                FadeInUp(
+                  delay: const Duration(milliseconds: 200),
+                  child: tenantConfigAsync.when(
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => const SizedBox.shrink(),
+                    data: (config) => _AccessButtons(auth: auth, config: config),
+                  ),
+                ),
 
                 const SizedBox(height: 24),
 
-                // Actividad reciente
-                FadeInUp(
-                  delay: const Duration(milliseconds: 300),
-                  child: Row(
-                    children: [
-                      const Text(
-                        AppStrings.recentActivity,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
+                // Actividad reciente (ADMIN y GUARD siempre; RESIDENT si no hay botones)
+                if (auth.isAdmin || auth.isGuard) ...[
+                  FadeInUp(
+                    delay: const Duration(milliseconds: 300),
+                    child: Row(
+                      children: [
+                        Text(
+                          AppStrings.recentActivity,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
                         ),
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () => context.go('/access'),
-                        child: const Text('Ver todo'),
-                      ),
-                    ],
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () => context.go('/access'),
+                          child: const Text('Ver todo'),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
 
-                const SizedBox(height: 8),
+                  const SizedBox(height: 8),
 
-                recentAccess.when(
-                  loading: () => _AccessLogSkeleton(),
-                  error: (e, _) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(e.toString(),
-                        style: const TextStyle(color: AppColors.error, fontSize: 13)),
+                  recentAccess.when(
+                    loading: () => _AccessLogSkeleton(),
+                    error: (e, _) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(e.toString(),
+                          style: TextStyle(color: context.colors.error, fontSize: 13)),
+                    ),
+                    data: (logs) => Column(
+                      children: logs
+                          .map((log) => _AccessLogItem(log: log))
+                          .toList(),
+                    ),
                   ),
-                  data: (logs) => Column(
-                    children: logs
-                        .map((log) => _AccessLogItem(log: log))
-                        .toList(),
-                  ),
-                ),
+                ],
 
                 const SizedBox(height: 80),
               ]),
@@ -182,11 +201,12 @@ class _RoleBadge extends StatelessWidget {
   final WidgetRef ref;
   const _RoleBadge({required this.auth, required this.ref});
 
-  Color get _roleColor {
+  Color _roleColor(BuildContext context) {
+    final c = context.colors;
     switch (auth.role) {
-      case 'ADMIN': return AppColors.primary;
-      case 'GUARD': return AppColors.info;
-      default: return AppColors.textMuted;
+      case 'ADMIN': return c.primary;
+      case 'GUARD': return c.info;
+      default: return c.textMuted;
     }
   }
 
@@ -201,7 +221,7 @@ class _RoleBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final displayName = auth.displayName;
-    final color = _roleColor;
+    final color = _roleColor(context);
 
     final badge = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -234,6 +254,10 @@ class _RoleBadge extends StatelessWidget {
 
     return PopupMenuButton<String>(
       onSelected: (value) async {
+        if (value == 'profile') {
+          context.push('/profile');
+          return;
+        }
         if (value == 'about') {
           final uri = Uri.parse('https://iados.mx');
           if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -243,79 +267,94 @@ class _RoleBadge extends StatelessWidget {
           final confirm = await showDialog<bool>(
             context: context,
             useRootNavigator: true,
-            builder: (dialogCtx) => AlertDialog(
-              backgroundColor: AppColors.bgCard,
-              title: const Text('Cerrar sesión',
-                  style: TextStyle(color: AppColors.textPrimary)),
-              content: const Text('¿Estás seguro que deseas salir?',
-                  style: TextStyle(color: AppColors.textSecondary)),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(dialogCtx, false),
-                    child: const Text('Cancelar')),
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogCtx, true),
-                  child: const Text('Salir',
-                      style: TextStyle(color: AppColors.error)),
-                ),
-              ],
-            ),
+            builder: (dialogCtx) {
+                final c = dialogCtx.colors;
+                return AlertDialog(
+                  backgroundColor: c.bgCard,
+                  title: Text('Cerrar sesión',
+                      style: TextStyle(color: c.textPrimary)),
+                  content: Text('¿Estás seguro que deseas salir?',
+                      style: TextStyle(color: c.textSecondary)),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(dialogCtx, false),
+                        child: const Text('Cancelar')),
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogCtx, true),
+                      child: Text('Salir', style: TextStyle(color: c.error)),
+                    ),
+                  ],
+                );
+              },
           );
           if (confirm == true) {
             await ref.read(authProvider.notifier).logout();
           }
         }
       },
-      color: AppColors.bgCard,
+      color: context.colors.bgCard,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      itemBuilder: (_) => [
-        PopupMenuItem(
-          enabled: false,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(displayName,
-                  style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14)),
-              const SizedBox(height: 2),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(_roleLabel,
+      itemBuilder: (_) {
+        final c = context.colors;
+        return [
+          PopupMenuItem(
+            enabled: false,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(displayName,
                     style: TextStyle(
-                        color: color, fontSize: 11, fontWeight: FontWeight.w600)),
-              ),
-            ],
+                        color: c.textPrimary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14)),
+                const SizedBox(height: 2),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(_roleLabel,
+                      style: TextStyle(
+                          color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
           ),
-        ),
-        const PopupMenuDivider(),
-        const PopupMenuItem(
-          value: 'about',
-          child: Row(
-            children: [
-              Icon(Icons.info_outline_rounded, color: AppColors.textMuted, size: 18),
-              SizedBox(width: 10),
-              Text('iados.mx', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
-            ],
+          const PopupMenuDivider(),
+          PopupMenuItem(
+            value: 'profile',
+            child: Row(
+              children: [
+                Icon(Icons.person_outline_rounded, color: c.textMuted, size: 18),
+                const SizedBox(width: 10),
+                Text('Mi perfil', style: TextStyle(color: c.textMuted, fontSize: 13)),
+              ],
+            ),
           ),
-        ),
-        const PopupMenuDivider(),
-        const PopupMenuItem(
-          value: 'logout',
-          child: Row(
-            children: [
-              Icon(Icons.logout_rounded, color: AppColors.error, size: 18),
-              SizedBox(width: 10),
-              Text('Cerrar sesión', style: TextStyle(color: AppColors.error)),
-            ],
+          PopupMenuItem(
+            value: 'about',
+            child: Row(
+              children: [
+                Icon(Icons.info_outline_rounded, color: c.textMuted, size: 18),
+                const SizedBox(width: 10),
+                Text('iados.mx', style: TextStyle(color: c.textMuted, fontSize: 13)),
+              ],
+            ),
           ),
-        ),
-      ],
+          const PopupMenuDivider(),
+          PopupMenuItem(
+            value: 'logout',
+            child: Row(
+              children: [
+                Icon(Icons.logout_rounded, color: c.error, size: 18),
+                const SizedBox(width: 10),
+                Text('Cerrar sesión', style: TextStyle(color: c.error)),
+              ],
+            ),
+          ),
+        ];
+      },
       child: badge,
     );
   }
@@ -343,28 +382,28 @@ class _StatsGrid extends StatelessWidget {
           label: AppStrings.todayAccess,
           value: stats['todayAccesses']?.toString() ?? '—',
           icon: Icons.login_rounded,
-          accentColor: AppColors.primary,
+          accentColor: context.colors.primary,
           isLoading: isLoading,
         ),
         StatCard(
           label: AppStrings.activeUnits,
           value: stats['totalUnits']?.toString() ?? '—',
           icon: Icons.home_outlined,
-          accentColor: AppColors.info,
+          accentColor: context.colors.info,
           isLoading: isLoading,
         ),
         StatCard(
           label: AppStrings.pendingPayments,
           value: stats['delinquentUnits']?.toString() ?? '—',
           icon: Icons.receipt_long_outlined,
-          accentColor: AppColors.warning,
+          accentColor: context.colors.warning,
           isLoading: isLoading,
         ),
         StatCard(
           label: AppStrings.devicesOnline,
           value: stats['onlineDevices']?.toString() ?? '—',
           icon: Icons.router_outlined,
-          accentColor: AppColors.success,
+          accentColor: context.colors.success,
           isLoading: isLoading,
         ),
       ],
@@ -372,113 +411,215 @@ class _StatsGrid extends StatelessWidget {
   }
 }
 
-class _OpenGateButton extends ConsumerStatefulWidget {
-  const _OpenGateButton();
+// ── Resumen para RESIDENT ────────────────────────────────────────────────
+
+class _ResidentSummary extends StatelessWidget {
+  final Map<String, dynamic> data;
+  const _ResidentSummary({required this.data});
 
   @override
-  ConsumerState<_OpenGateButton> createState() => _OpenGateButtonState();
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final c = context.colors;
+    final charges = data['pendingCharges'];
+    final nextPayment = data['nextDueDate'] as String?;
+    final lastAccess = data['lastAccess'] as String?;
+
+    String nextPayStr = '';
+    if (nextPayment != null) {
+      try {
+        final dt = DateTime.parse(nextPayment).toLocal();
+        nextPayStr = DateFormat('dd/MM/yyyy').format(dt);
+      } catch (_) {}
+    }
+    String lastAccessStr = '';
+    if (lastAccess != null) {
+      try {
+        final dt = DateTime.parse(lastAccess).toLocal();
+        lastAccessStr = DateFormat('dd/MM HH:mm').format(dt);
+      } catch (_) {}
+    }
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _SummaryCard(
+                icon: Icons.check_circle_outline_rounded,
+                label: 'Estado cuenta',
+                value: 'Activo',
+                color: c.success,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _SummaryCard(
+                icon: Icons.receipt_long_rounded,
+                label: 'Cargos pendientes',
+                value: charges?.toString() ?? '0',
+                color: charges != null && charges > 0 ? c.warning : c.success,
+              ),
+            ),
+          ],
+        ),
+        if (nextPayStr.isNotEmpty || lastAccessStr.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              if (nextPayStr.isNotEmpty)
+                Expanded(
+                  child: _SummaryCard(
+                    icon: Icons.calendar_today_rounded,
+                    label: 'Próximo pago',
+                    value: nextPayStr,
+                    color: c.info,
+                  ),
+                ),
+              if (nextPayStr.isNotEmpty && lastAccessStr.isNotEmpty)
+                const SizedBox(width: 12),
+              if (lastAccessStr.isNotEmpty)
+                Expanded(
+                  child: _SummaryCard(
+                    icon: Icons.login_rounded,
+                    label: 'Último acceso',
+                    value: lastAccessStr,
+                    color: c.textMuted,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
 }
 
-class _OpenGateButtonState extends ConsumerState<_OpenGateButton> {
-  bool _loading = false;
+class _SummaryCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+  const _SummaryCard({required this.icon, required this.label, required this.value, required this.color});
 
-  Future<void> _openGate() async {
-    setState(() => _loading = true);
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outline.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 16),
+          ),
+          const SizedBox(height: 10),
+          Text(label, style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.5))),
+          const SizedBox(height: 2),
+          Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: cs.onSurface)),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Botones acceso configurables ──────────────────────────────────────────
+
+class _AccessButtons extends ConsumerStatefulWidget {
+  final AuthState auth;
+  final TenantConfig config;
+  const _AccessButtons({required this.auth, required this.config});
+
+  @override
+  ConsumerState<_AccessButtons> createState() => _AccessButtonsState();
+}
+
+class _AccessButtonsState extends ConsumerState<_AccessButtons> {
+  final Map<String, bool> _loading = {};
+
+  Future<void> _openGate({required String direction, String? accessType}) async {
+    final key = '$direction-${accessType ?? 'any'}';
+    setState(() => _loading[key] = true);
     try {
       final api = ref.read(apiClientProvider);
-
-      // Obtener dispositivos activos
       final devRes = await api.get('/devices');
       final allDevices = devRes.data['data'] as List? ?? [];
 
-      // Preferir ONLINE, si no cualquier activo
-      final online = allDevices
-          .where((d) => d['isActive'] != false && d['status'] == 'ONLINE')
-          .toList();
-      final active = allDevices
+      List devices = allDevices
           .where((d) => d['isActive'] != false)
           .toList();
-      final devices = online.isNotEmpty ? online : active;
 
-      if (devices.isEmpty) {
+      // Filtrar por accessType si hay botón específico
+      if (accessType != null) {
+        final typed = devices.where((d) => d['accessType'] == accessType).toList();
+        if (typed.isNotEmpty) devices = typed;
+      }
+
+      final online = devices.where((d) => d['status'] == 'ONLINE').toList();
+      final selected = online.isNotEmpty ? online : devices;
+
+      if (selected.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No hay dispositivos disponibles'),
-              backgroundColor: AppColors.error,
-            ),
+            SnackBar(content: const Text('No hay dispositivos disponibles'), backgroundColor: context.colors.error),
           );
         }
         return;
       }
 
-      final deviceId = devices.first['id'] as String;
+      final deviceId = selected.first['id'] as String;
       final result = await api.post('/access/open', data: {
         'deviceId': deviceId,
         'method': 'APP',
-        'direction': 'ENTRY',
+        'direction': direction,
       });
 
       final granted = result.data['data']?['granted'] as bool? ?? false;
-      final reason = result.data['data']?['reason'] as String? ?? '';
+      final reason  = result.data['data']?['reason']  as String? ?? '';
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(granted ? '✓ Acceso abierto correctamente' : '✗ $reason'),
-            backgroundColor: granted ? AppColors.success : AppColors.error,
+            content: Text(granted ? '✓ Comando enviado' : '✗ $reason'),
+            backgroundColor: granted ? context.colors.success : context.colors.error,
           ),
         );
         if (granted) ref.invalidate(recentAccessProvider);
       }
     } catch (e) {
       if (mounted) {
-        final msg = e.toString().contains('429')
-            ? 'Espera unos segundos antes de volver a abrir'
-            : 'Error al enviar comando';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(msg),
-            backgroundColor: AppColors.warning,
-          ),
+          SnackBar(content: Text(e.toString().contains('429') ? 'Espera unos segundos' : 'Error al enviar comando'), backgroundColor: context.colors.warning),
         );
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _loading.remove(key));
     }
   }
 
-  void _showOpenConfirm() {
+  void _confirm(String label, String direction, String? accessType) {
     showDialog(
       context: context,
       useRootNavigator: true,
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: AppColors.bgCard,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.lock_open_rounded, color: AppColors.primary),
-            SizedBox(width: 8),
-            Text('Confirmar apertura',
-                style: TextStyle(color: AppColors.textPrimary)),
-          ],
-        ),
-        content: const Text(
-          '¿Deseas enviar el comando de apertura?',
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
+      builder: (ctx) => AlertDialog(
+        title: Row(children: [
+          Icon(Icons.lock_open_rounded, color: ctx.colors.primary),
+          const SizedBox(width: 8),
+          Text(label),
+        ]),
+        content: const Text('¿Deseas enviar el comando de apertura?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('Cancelar'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(dialogCtx);
-              _openGate();
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-            child: const Text('Abrir', style: TextStyle(color: Colors.white)),
+            onPressed: () { Navigator.pop(ctx); _openGate(direction: direction, accessType: accessType); },
+            child: const Text('Confirmar'),
           ),
         ],
       ),
@@ -487,54 +628,99 @@ class _OpenGateButtonState extends ConsumerState<_OpenGateButton> {
 
   @override
   Widget build(BuildContext context) {
+    final config = widget.config;
+    final auth = widget.auth;
+    final isGuard = auth.isGuard;
+
+    // Construir lista de botones según flags
+    final List<({String label, String direction, String? accessType, IconData icon})> buttons = [];
+
+    if (config.showResidentAccessButton || isGuard) {
+      buttons.add((label: 'Entrada Residentes', direction: 'ENTRY', accessType: 'RESIDENT', icon: Icons.home_rounded));
+    }
+    if ((config.showResidentAccessButton && config.showExitButton) || isGuard) {
+      buttons.add((label: 'Salida Residentes', direction: 'EXIT', accessType: 'RESIDENT', icon: Icons.logout_rounded));
+    }
+    if (config.showVisitorAccessButton || isGuard) {
+      buttons.add((label: 'Entrada Visitas', direction: 'ENTRY', accessType: 'VISITOR', icon: Icons.group_rounded));
+    }
+    if ((config.showVisitorAccessButton && config.showExitButton) || isGuard) {
+      buttons.add((label: 'Salida Visitas', direction: 'EXIT', accessType: 'VISITOR', icon: Icons.group_remove_rounded));
+    }
+
+    // Si no hay flags activos y es admin/guard: mostrar botón genérico
+    if (buttons.isEmpty && (auth.isAdmin || auth.isGuard)) {
+      buttons.add((label: 'Abrir Acceso', direction: 'ENTRY', accessType: null, icon: Icons.lock_open_rounded));
+    }
+
+    if (buttons.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      children: [
+        for (final btn in buttons) ...[
+          _AccessButtonTile(
+            label: btn.label,
+            icon: btn.icon,
+            direction: btn.direction,
+            loading: _loading['${btn.direction}-${btn.accessType ?? 'any'}'] == true,
+            onTap: () => _confirm(btn.label, btn.direction, btn.accessType),
+          ),
+          const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+}
+
+class _AccessButtonTile extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final String direction;
+  final bool loading;
+  final VoidCallback onTap;
+
+  const _AccessButtonTile({
+    required this.label,
+    required this.icon,
+    required this.direction,
+    required this.loading,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final isExit = direction == 'EXIT';
+    final color = isExit ? c.warning : c.primary;
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        gradient: AppColors.primaryGradient,
-        borderRadius: BorderRadius.circular(16),
+        gradient: isExit
+            ? LinearGradient(colors: [c.warning, c.warning.withOpacity(0.8)],
+                begin: Alignment.topLeft, end: Alignment.bottomRight)
+            : c.primaryGradient,
+        borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.35),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
+          BoxShadow(color: color.withOpacity(0.3), blurRadius: 16, offset: const Offset(0, 6)),
         ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: _loading ? null : _showOpenConfirm,
-          borderRadius: BorderRadius.circular(16),
+          onTap: loading ? null : onTap,
+          borderRadius: BorderRadius.circular(14),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            child: _loading
-                ? const Center(
-                    child: SizedBox(
-                      height: 32,
-                      width: 32,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2.5,
-                      ),
-                    ),
-                  )
-                : const Column(
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+            child: loading
+                ? const Center(child: SizedBox(height: 28, width: 28,
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)))
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.lock_open_rounded, color: Colors.white, size: 32),
-                      SizedBox(height: 8),
-                      Text(
-                        'Abrir Acceso',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                      Text(
-                        'Toca para enviar comando de apertura',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
+                      Icon(icon, color: Colors.white, size: 24),
+                      const SizedBox(width: 10),
+                      Text(label, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
                     ],
                   ),
           ),
@@ -547,6 +733,7 @@ class _OpenGateButtonState extends ConsumerState<_OpenGateButton> {
 class _AccessLogSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Column(
       children: List.generate(
         4,
@@ -554,7 +741,7 @@ class _AccessLogSkeleton extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 10),
           height: 64,
           decoration: BoxDecoration(
-            color: AppColors.bgCard,
+            color: c.bgCard,
             borderRadius: BorderRadius.circular(12),
           ),
         ),
@@ -569,13 +756,15 @@ class _AccessLogItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
+    final isLight = Theme.of(context).brightness == Brightness.light;
     final granted = log['granted'] as bool? ?? false;
     final method = log['method'] as String? ?? '';
     final visitorName = log['visitorName'] as String?;
     final unitId = log['unitId'] as String?;
     final createdAt = log['createdAt'] as String?;
 
-    final color = granted ? AppColors.accessGranted : AppColors.accessDenied;
+    final color = granted ? c.accessGranted : c.accessDenied;
     final icon = granted ? Icons.check_circle_outline : Icons.cancel_outlined;
 
     String timeStr = '';
@@ -590,9 +779,12 @@ class _AccessLogItem extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.bgCard,
+        color: c.bgCard,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: c.border),
+        boxShadow: isLight
+            ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2))]
+            : null,
       ),
       child: Row(
         children: [
@@ -611,18 +803,15 @@ class _AccessLogItem extends StatelessWidget {
               children: [
                 Text(
                   visitorName ?? 'Residente',
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
+                  style: TextStyle(
+                    color: c.textPrimary,
                     fontWeight: FontWeight.w500,
                     fontSize: 14,
                   ),
                 ),
                 Text(
                   _methodLabel(method),
-                  style: const TextStyle(
-                    color: AppColors.textMuted,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: c.textMuted, fontSize: 12),
                 ),
               ],
             ),
@@ -630,13 +819,7 @@ class _AccessLogItem extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                timeStr,
-                style: const TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 12,
-                ),
-              ),
+              Text(timeStr, style: TextStyle(color: c.textMuted, fontSize: 12)),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

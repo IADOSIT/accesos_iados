@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_colors_scheme.dart';
 
 class AppTextField extends StatefulWidget {
   final String label;
@@ -34,13 +34,14 @@ class _AppTextFieldState extends State<AppTextField> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           widget.label,
-          style: const TextStyle(
-            color: AppColors.textSecondary,
+          style: TextStyle(
+            color: c.textSecondary,
             fontSize: 13,
             fontWeight: FontWeight.w500,
           ),
@@ -53,7 +54,7 @@ class _AppTextFieldState extends State<AppTextField> {
           validator: widget.validator,
           readOnly: widget.readOnly,
           onTap: widget.onTap,
-          style: const TextStyle(color: AppColors.textPrimary, fontSize: 15),
+          style: TextStyle(color: c.textPrimary, fontSize: 15),
           decoration: InputDecoration(
             hintText: widget.hint,
             prefixIcon: widget.prefixIcon != null
@@ -64,7 +65,7 @@ class _AppTextFieldState extends State<AppTextField> {
                     icon: Icon(
                       _obscure ? Icons.visibility_off : Icons.visibility,
                       size: 18,
-                      color: AppColors.textMuted,
+                      color: c.textMuted,
                     ),
                     onPressed: () => setState(() => _obscure = !_obscure),
                   )

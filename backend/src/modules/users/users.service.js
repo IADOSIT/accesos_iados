@@ -13,6 +13,7 @@ async function create(tenantId, data) {
         firstName: data.firstName,
         lastName: data.lastName,
         phone: data.phone,
+        mustChangePassword: data.mustChangePassword ?? false,
       },
     });
   }
@@ -100,4 +101,29 @@ async function hardDelete(tenantId, userId) {
   }
 }
 
-module.exports = { create, findAll, findById, update, deactivate, activate, hardDelete };
+async function bulkCreate(tenantId, rows) {
+  const units = await prisma.unit.findMany({
+    where: { tenantId },
+    select: { id: true, identifier: true },
+  });
+  const unitMap = Object.fromEntries(units.map(u => [u.identifier.toLowerCase(), u.id]));
+
+  const results = { created: 0, skipped: 0, errors: [] };
+  for (const [i, row] of rows.entries()) {
+    try {
+      const data = { ...row, mustChangePassword: true };
+      if (row.unit) {
+        data.unitId = unitMap[row.unit.toLowerCase()] ?? undefined;
+        delete data.unit;
+      }
+      await create(tenantId, data);
+      results.created++;
+    } catch (err) {
+      if (err.status === 409) results.skipped++;
+      else results.errors.push({ row: i + 2, email: row.email, reason: err.message });
+    }
+  }
+  return results;
+}
+
+module.exports = { create, bulkCreate, findAll, findById, update, deactivate, activate, hardDelete };

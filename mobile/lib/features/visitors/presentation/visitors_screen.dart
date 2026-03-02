@@ -6,11 +6,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
-import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/app_colors_scheme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/providers/auth_provider.dart';
+import '../../../shared/providers/tenant_config_provider.dart';
 
-// ─── Provider ────────────────────────────────────────────────────────────────
+const String _portalUrl = String.fromEnvironment(
+    'PORTAL_URL', defaultValue: 'http://34.71.132.26:3002');
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
 
 final qrCodesProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
   final api = ref.watch(apiClientProvider);
@@ -18,7 +22,7 @@ final qrCodesProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
   return res.data['data'] as List? ?? [];
 });
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 bool _isExpired(dynamic qr) {
   final expiresAt = qr['expiresAt'] as String?;
@@ -47,7 +51,7 @@ String _formatDate(String? iso) {
   }
 }
 
-// ─── Screen ──────────────────────────────────────────────────────────────────
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 class VisitorsScreen extends ConsumerStatefulWidget {
   const VisitorsScreen({super.key});
@@ -63,7 +67,7 @@ class _VisitorsScreenState extends ConsumerState<VisitorsScreen>
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -87,7 +91,7 @@ class _VisitorsScreenState extends ConsumerState<VisitorsScreen>
   void _showGenerateQr() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.bgCard,
+      backgroundColor: context.colors.bgCard,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -95,7 +99,6 @@ class _VisitorsScreenState extends ConsumerState<VisitorsScreen>
       builder: (_) => _GenerateQRSheet(
         onGenerated: (qr) {
           ref.invalidate(qrCodesProvider);
-          // Mostrar modal con el QR recién generado
           Future.microtask(() {
             if (mounted) _showQRModal(qr);
           });
@@ -106,10 +109,11 @@ class _VisitorsScreenState extends ConsumerState<VisitorsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final allQRs = ref.watch(qrCodesProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.bgDark,
+      backgroundColor: c.bgMain,
       appBar: AppBar(
         title: const Text('Visitantes & QR'),
         actions: [
@@ -120,71 +124,345 @@ class _VisitorsScreenState extends ConsumerState<VisitorsScreen>
         ],
         bottom: TabBar(
           controller: _tabCtrl,
-          indicatorColor: AppColors.primary,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: AppColors.textMuted,
+          indicatorColor: c.primary,
+          labelColor: c.primary,
+          unselectedLabelColor: c.textMuted,
           tabs: const [
             Tab(text: 'Activos'),
             Tab(text: 'Vencidos'),
+            Tab(text: 'QR Rápido'),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showGenerateQr,
-        backgroundColor: AppColors.primary,
+        backgroundColor: c.primary,
         icon: const Icon(Icons.qr_code_rounded, color: Colors.white),
         label: const Text('Generar QR', style: TextStyle(color: Colors.white)),
       ),
-      body: allQRs.when(
-        loading: () =>
-            const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, color: AppColors.error, size: 48),
-              const SizedBox(height: 12),
-              Text(e.toString(),
-                  style: const TextStyle(color: AppColors.error, fontSize: 12),
-                  textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => ref.invalidate(qrCodesProvider),
-                child: const Text('Reintentar'),
-              ),
-            ],
+      body: TabBarView(
+        controller: _tabCtrl,
+        children: [
+          // Tab 1: QRs activos
+          allQRs.when(
+            loading: () => Center(child: CircularProgressIndicator(color: c.primary)),
+            error: (e, _) => Center(child: Text(e.toString(), style: TextStyle(color: c.error))),
+            data: (items) => _QRList(
+              qrs: items.where(_isEffectivelyActive).toList(),
+              emptyMessage: 'No hay QRs activos',
+              emptyIcon: Icons.qr_code_outlined,
+              onTap: _showQRModal,
+              onRevoked: () => ref.invalidate(qrCodesProvider),
+            ),
           ),
-        ),
-        data: (items) {
-          final activos = items.where(_isEffectivelyActive).toList();
-          final vencidos = items.where((q) => !_isEffectivelyActive(q)).toList();
-
-          return TabBarView(
-            controller: _tabCtrl,
-            children: [
-              _QRList(
-                qrs: activos,
-                emptyMessage: 'No hay QRs activos',
-                emptyIcon: Icons.qr_code_outlined,
-                onTap: _showQRModal,
-                onRevoked: () => ref.invalidate(qrCodesProvider),
-              ),
-              _QRList(
-                qrs: vencidos,
-                emptyMessage: 'No hay QRs vencidos',
-                emptyIcon: Icons.check_circle_outline,
-                onTap: _showQRModal,
-                onRevoked: () => ref.invalidate(qrCodesProvider),
-              ),
-            ],
-          );
-        },
+          // Tab 2: QRs vencidos
+          allQRs.when(
+            loading: () => Center(child: CircularProgressIndicator(color: c.primary)),
+            error: (e, _) => Center(child: Text(e.toString(), style: TextStyle(color: c.error))),
+            data: (items) => _QRList(
+              qrs: items.where((q) => !_isEffectivelyActive(q)).toList(),
+              emptyMessage: 'No hay QRs vencidos',
+              emptyIcon: Icons.check_circle_outline,
+              onTap: _showQRModal,
+              onRevoked: () => ref.invalidate(qrCodesProvider),
+            ),
+          ),
+          // Tab 3: QR Rápido
+          const _QuickQRTab(),
+        ],
       ),
     );
   }
 }
 
-// ─── Lista de QRs ────────────────────────────────────────────────────────────
+// ─── Quick QR Tab ─────────────────────────────────────────────────────────────
+
+class _QuickQRTab extends ConsumerStatefulWidget {
+  const _QuickQRTab();
+
+  @override
+  ConsumerState<_QuickQRTab> createState() => _QuickQRTabState();
+}
+
+class _QuickQRTabState extends ConsumerState<_QuickQRTab> {
+  static const _categories = [
+    (icon: '🚗', label: 'Uber/Didi'),
+    (icon: '📦', label: 'Delivery'),
+    (icon: '🔧', label: 'Servicio'),
+    (icon: '👤', label: 'Visita'),
+  ];
+
+  Map<String, dynamic>? _generatedQR;
+  bool _loading = false;
+
+  Future<void> _generate(String category) async {
+    setState(() {
+      _loading = true;
+      _generatedQR = null;
+    });
+    try {
+      final api = ref.read(apiClientProvider);
+      final res = await api.post('/access/qr/quick', data: {'category': category});
+      setState(() => _generatedQR = res.data['data'] as Map<String, dynamic>?);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: context.colors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _copyLink() async {
+    final qr = _generatedQR;
+    if (qr == null) return;
+    final code = qr['code'] as String? ?? '';
+    final url = '$_portalUrl/qr/$code';
+    try {
+      await Clipboard.setData(ClipboardData(text: url));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Enlace copiado'),
+            backgroundColor: context.colors.success,
+          ),
+        );
+      }
+    } catch (_) {
+      // En web HTTP el clipboard nativo falla — mostrar URL seleccionable
+      if (mounted) {
+        final c = context.colors;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: c.bgCard,
+            title: Text('Enlace del QR', style: TextStyle(color: c.textPrimary)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Copia este enlace manualmente:',
+                    style: TextStyle(fontSize: 13, color: c.textSecondary)),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: c.bgInput,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: c.border),
+                  ),
+                  child: SelectableText(
+                    url,
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                        color: c.textPrimary),
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cerrar')),
+            ],
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final configAsync = ref.watch(tenantConfigProvider);
+
+    return configAsync.when(
+      loading: () => Center(child: CircularProgressIndicator(color: c.primary)),
+      error: (_, __) => Center(
+          child: Text('Error al cargar configuración',
+              style: TextStyle(color: c.textSecondary))),
+      data: (config) {
+        if (!config.quickQrEnabled) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('🔒', style: TextStyle(fontSize: 48)),
+                  const SizedBox(height: 16),
+                  Text(
+                    'QR Rápido no habilitado',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: c.textPrimary),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tu administrador no ha habilitado esta función.',
+                    style: TextStyle(fontSize: 13, color: c.textMuted),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Acceso rápido',
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: c.textPrimary),
+              ),
+              Text(
+                'Genera un QR de ${config.quickQrDurationHours}h · máximo ${config.quickQrMaxUses} usos',
+                style: TextStyle(fontSize: 13, color: c.textMuted),
+              ),
+              const SizedBox(height: 20),
+
+              // Grid de categorías
+              if (_generatedQR == null)
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 1.5,
+                  children: _categories.map((cat) {
+                    return InkWell(
+                      onTap: _loading ? null : () => _generate(cat.label),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: c.bgCard,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: c.border),
+                          boxShadow: Theme.of(context).brightness == Brightness.light
+                              ? [BoxShadow(
+                                  color: Colors.black.withOpacity(0.05),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2))]
+                              : null,
+                        ),
+                        child: _loading
+                            ? Center(
+                                child: SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: c.primary),
+                                ),
+                              )
+                            : Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(cat.icon,
+                                      style: const TextStyle(fontSize: 28)),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    cat.label,
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: c.textPrimary),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+
+              // Resultado QR generado
+              if (_generatedQR != null)
+                Center(
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: c.bgCard,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: c.border),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              '${_categories.firstWhere((cat) => cat.label == _generatedQR!['visitorName'], orElse: () => (icon: '🔑', label: '')).icon}  ${_generatedQR!['visitorName'] ?? ''}',
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: c.textPrimary),
+                            ),
+                            const SizedBox(height: 16),
+                            QrImageView(
+                              data: _generatedQR!['code'] as String? ?? '',
+                              version: QrVersions.auto,
+                              size: 180,
+                              backgroundColor: Colors.white,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              _generatedQR!['code'] as String? ?? '',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                  color: c.textMuted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _copyLink,
+                              icon: const Icon(Icons.link_rounded, size: 18),
+                              label: const Text('Copiar enlace'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () =>
+                                  setState(() => _generatedQR = null),
+                              icon:
+                                  const Icon(Icons.refresh_rounded, size: 18),
+                              label: const Text('Generar otro'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+              const SizedBox(height: 40),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─── Lista de QRs ─────────────────────────────────────────────────────────────
 
 class _QRList extends StatelessWidget {
   final List<dynamic> qrs;
@@ -203,16 +481,16 @@ class _QRList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     if (qrs.isEmpty) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(emptyIcon, color: AppColors.textMuted, size: 56),
+            Icon(emptyIcon, color: c.textMuted, size: 56),
             const SizedBox(height: 16),
             Text(emptyMessage,
-                style:
-                    const TextStyle(color: AppColors.textSecondary, fontSize: 16)),
+                style: TextStyle(color: c.textSecondary, fontSize: 16)),
           ],
         ),
       );
@@ -230,7 +508,7 @@ class _QRList extends StatelessWidget {
   }
 }
 
-// ─── QR Card ─────────────────────────────────────────────────────────────────
+// ─── QR Card ──────────────────────────────────────────────────────────────────
 
 class _QRCard extends ConsumerWidget {
   final dynamic qr;
@@ -245,6 +523,9 @@ class _QRCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
     final visitorName = qr['visitorName'] as String? ?? 'Visitante';
     final maxUses = qr['maxUses'] as int? ?? 1;
     final usedCount = qr['usedCount'] as int? ?? 0;
@@ -253,28 +534,25 @@ class _QRCard extends ConsumerWidget {
     final expired = _isExpired(qr);
     final active = _isEffectivelyActive(qr);
 
-    final statusColor = active
-        ? AppColors.success
-        : expired
-            ? AppColors.textMuted
-            : AppColors.error;
-
-    final statusLabel = active
-        ? 'Activo'
-        : expired
-            ? 'Vencido'
-            : 'Revocado';
+    final statusColor = active ? c.success : expired ? c.textMuted : c.error;
+    final statusLabel = active ? 'Activo' : expired ? 'Vencido' : 'Revocado';
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.bgCard,
+          color: c.bgCard,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: active ? AppColors.border : AppColors.border.withOpacity(0.4),
+            color: active ? c.border : c.border.withOpacity(0.4),
           ),
+          boxShadow: isLight
+              ? [BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2))]
+              : null,
         ),
         child: Row(
           children: [
@@ -301,9 +579,7 @@ class _QRCard extends ConsumerWidget {
                   Text(
                     visitorName,
                     style: TextStyle(
-                      color: active
-                          ? AppColors.textPrimary
-                          : AppColors.textMuted,
+                      color: active ? c.textPrimary : c.textMuted,
                       fontWeight: FontWeight.w600,
                       fontSize: 14,
                     ),
@@ -311,24 +587,17 @@ class _QRCard extends ConsumerWidget {
                   const SizedBox(height: 3),
                   Text(
                     'Vence: ${_formatDate(qr['expiresAt'] as String?)}',
-                    style:
-                        const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                    style: TextStyle(color: c.textMuted, fontSize: 12),
                   ),
                   Row(
                     children: [
-                      Text(
-                        'Usos: $usedCount/$maxUses',
-                        style: const TextStyle(
-                            color: AppColors.textMuted, fontSize: 11),
-                      ),
+                      Text('Usos: $usedCount/$maxUses',
+                          style: TextStyle(color: c.textMuted, fontSize: 11)),
                       if (unitId != null) ...[
-                        const Text(' · ',
-                            style: TextStyle(color: AppColors.textMuted)),
-                        Text(
-                          'Unidad $unitId',
-                          style: const TextStyle(
-                              color: AppColors.textMuted, fontSize: 11),
-                        ),
+                        Text(' · ', style: TextStyle(color: c.textMuted)),
+                        Text('Unidad $unitId',
+                            style:
+                                TextStyle(color: c.textMuted, fontSize: 11)),
                       ],
                     ],
                   ),
@@ -339,8 +608,7 @@ class _QRCard extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: statusColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
@@ -359,18 +627,17 @@ class _QRCard extends ConsumerWidget {
                   GestureDetector(
                     onTap: () => _confirmRevoke(context, ref),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: AppColors.error.withOpacity(0.1),
+                        color: c.error.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                            color: AppColors.error.withOpacity(0.3)),
+                        border: Border.all(color: c.error.withOpacity(0.3)),
                       ),
-                      child: const Text(
+                      child: Text(
                         'Revocar',
                         style: TextStyle(
-                          color: AppColors.error,
+                          color: c.error,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
@@ -387,16 +654,16 @@ class _QRCard extends ConsumerWidget {
   }
 
   Future<void> _confirmRevoke(BuildContext context, WidgetRef ref) async {
+    final c = context.colors;
     final confirm = await showDialog<bool>(
       context: context,
       useRootNavigator: true,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgCard,
-        title: const Text('Revocar QR',
-            style: TextStyle(color: AppColors.textPrimary)),
+        backgroundColor: c.bgCard,
+        title: Text('Revocar QR', style: TextStyle(color: c.textPrimary)),
         content: Text(
           '¿Deshabilitar el QR de "${qr['visitorName']}"? El visitante ya no podrá acceder con este código.',
-          style: const TextStyle(color: AppColors.textSecondary),
+          style: TextStyle(color: c.textSecondary),
         ),
         actions: [
           TextButton(
@@ -404,8 +671,7 @@ class _QRCard extends ConsumerWidget {
               child: const Text('Cancelar')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Revocar',
-                style: TextStyle(color: AppColors.error)),
+            child: Text('Revocar', style: TextStyle(color: c.error)),
           ),
         ],
       ),
@@ -418,15 +684,14 @@ class _QRCard extends ConsumerWidget {
       onRevoked();
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
       }
     }
   }
 }
 
-// ─── QR Display Dialog ───────────────────────────────────────────────────────
+// ─── QR Display Dialog ────────────────────────────────────────────────────────
 
 class _QRDisplayDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic> qr;
@@ -470,9 +735,8 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
       await Share.shareXFiles([xFile], subject: 'Código de acceso QR');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al compartir: $e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error al compartir: $e')));
       }
     } finally {
       if (mounted) setState(() => _sharing = false);
@@ -488,24 +752,22 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
   }
 
   Future<void> _revoke() async {
+    final c = context.colors;
     final confirm = await showDialog<bool>(
       context: context,
       useRootNavigator: true,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgCard,
-        title: const Text('Revocar QR',
-            style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text(
-            'El visitante ya no podrá acceder con este código.',
-            style: TextStyle(color: AppColors.textSecondary)),
+        backgroundColor: c.bgCard,
+        title: Text('Revocar QR', style: TextStyle(color: c.textPrimary)),
+        content: Text('El visitante ya no podrá acceder con este código.',
+            style: TextStyle(color: c.textSecondary)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancelar')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child:
-                const Text('Revocar', style: TextStyle(color: AppColors.error)),
+            child: Text('Revocar', style: TextStyle(color: c.error)),
           ),
         ],
       ),
@@ -529,11 +791,12 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final code = widget.qr['code'] as String? ?? '';
     final active = _isEffectivelyActive(widget.qr);
 
     return Dialog(
-      backgroundColor: AppColors.bgCard,
+      backgroundColor: c.bgCard,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Padding(
@@ -545,11 +808,11 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
               // Header
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Código QR',
                       style: TextStyle(
-                        color: AppColors.textPrimary,
+                        color: c.textPrimary,
                         fontWeight: FontWeight.w700,
                         fontSize: 18,
                       ),
@@ -557,8 +820,7 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded,
-                        color: AppColors.textMuted, size: 20),
+                    icon: Icon(Icons.close_rounded, color: c.textMuted, size: 20),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),
@@ -566,7 +828,7 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
               ),
               const SizedBox(height: 12),
 
-              // QR Share Card — esto ES la imagen que se comparte
+              // QR Share Card — imagen a compartir (siempre blanca)
               RepaintBoundary(
                 key: _shareKey,
                 child: _QRShareCard(
@@ -580,10 +842,9 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
               GestureDetector(
                 onTap: _copyCode,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
+                    color: c.primary.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -591,8 +852,8 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
                     children: [
                       Text(
                         code,
-                        style: const TextStyle(
-                          color: AppColors.primary,
+                        style: TextStyle(
+                          color: c.primary,
                           fontFamily: 'monospace',
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
@@ -600,8 +861,7 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      const Icon(Icons.copy_rounded,
-                          size: 14, color: AppColors.primary),
+                      Icon(Icons.copy_rounded, size: 14, color: c.primary),
                     ],
                   ),
                 ),
@@ -614,7 +874,7 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
                 child: ElevatedButton.icon(
                   onPressed: _sharing ? null : _shareAsImage,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
+                    backgroundColor: c.primary,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
@@ -642,23 +902,20 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
                   child: OutlinedButton.icon(
                     onPressed: _revoking ? null : _revoke,
                     style: OutlinedButton.styleFrom(
-                      side: BorderSide(
-                          color: AppColors.error.withOpacity(0.5)),
+                      side: BorderSide(color: c.error.withOpacity(0.5)),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                     ),
                     icon: _revoking
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: AppColors.error),
+                                strokeWidth: 2, color: c.error),
                           )
-                        : const Icon(Icons.block_rounded,
-                            color: AppColors.error, size: 18),
-                    label: const Text('Revocar QR',
-                        style: TextStyle(color: AppColors.error)),
+                        : Icon(Icons.block_rounded, color: c.error, size: 18),
+                    label: Text('Revocar QR', style: TextStyle(color: c.error)),
                   ),
                 ),
               ],
@@ -670,7 +927,7 @@ class _QRDisplayDialogState extends ConsumerState<_QRDisplayDialog> {
   }
 }
 
-// ─── QR Share Card (tarjeta blanca que se comparte como imagen) ───────────────
+// ─── QR Share Card — hardcoded blanco (imagen para compartir) ─────────────────
 
 class _QRShareCard extends StatelessWidget {
   final Map<String, dynamic> qr;
@@ -696,7 +953,6 @@ class _QRShareCard extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Header
           Text(
             tenantName,
             style: const TextStyle(
@@ -713,8 +969,6 @@ class _QRShareCard extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
-
-          // QR Code
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -737,12 +991,9 @@ class _QRShareCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-
-          // Instrucciones
           Container(
             width: double.infinity,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
               color: const Color(0xFFF0FDF4),
               borderRadius: BorderRadius.circular(8),
@@ -761,16 +1012,15 @@ class _QRShareCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Row(
+                const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
+                  children: [
                     Icon(Icons.wb_sunny_outlined,
                         size: 12, color: Color(0xFF16A34A)),
                     SizedBox(width: 4),
                     Text(
                       'Sube el brillo de tu dispositivo',
-                      style:
-                          TextStyle(color: Color(0xFF16A34A), fontSize: 10),
+                      style: TextStyle(color: Color(0xFF16A34A), fontSize: 10),
                     ),
                   ],
                 ),
@@ -778,8 +1028,6 @@ class _QRShareCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-
-          // Datos del visitante
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
@@ -801,8 +1049,6 @@ class _QRShareCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-
-          // Footer: iados.mx + logo
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -846,10 +1092,7 @@ class _CardInfoRow extends StatelessWidget {
             width: 72,
             child: Text(
               '$label:',
-              style: const TextStyle(
-                color: Color(0xFF94A3B8),
-                fontSize: 11,
-              ),
+              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
             ),
           ),
           Expanded(
@@ -954,21 +1197,21 @@ class _GenerateQRSheetState extends ConsumerState<_GenerateQRSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Padding(
-      padding:
-          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Generar código QR',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
+                color: c.textPrimary,
               ),
             ),
             const SizedBox(height: 20),
@@ -978,34 +1221,32 @@ class _GenerateQRSheetState extends ConsumerState<_GenerateQRSheet> {
                 labelText: 'Nombre del visitante *',
                 prefixIcon: Icon(Icons.person_outline),
               ),
-              style: const TextStyle(color: AppColors.textPrimary),
+              style: TextStyle(color: c.textPrimary),
             ),
             const SizedBox(height: 16),
             if (_unitsError != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text(_unitsError!,
-                    style: const TextStyle(color: AppColors.error, fontSize: 13)),
+                    style: TextStyle(color: c.error, fontSize: 13)),
               )
             else if (_units.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text('Cargando unidades...',
-                    style:
-                        TextStyle(color: AppColors.textMuted, fontSize: 13)),
+                    style: TextStyle(color: c.textMuted, fontSize: 13)),
               )
             else
               DropdownButtonFormField<String>(
                 value: _selectedUnitId,
-                dropdownColor: AppColors.bgCard,
-                style: const TextStyle(color: AppColors.textPrimary),
+                dropdownColor: c.bgCard,
+                style: TextStyle(color: c.textPrimary),
                 decoration: const InputDecoration(labelText: 'Unidad *'),
                 items: _units
                     .map<DropdownMenuItem<String>>(
                       (u) => DropdownMenuItem<String>(
                         value: u['id'] as String,
-                        child: Text(
-                            u['identifier'] as String? ?? u['id'] as String),
+                        child: Text(u['identifier'] as String? ?? u['id'] as String),
                       ),
                     )
                     .toList(),
@@ -1018,18 +1259,16 @@ class _GenerateQRSheetState extends ConsumerState<_GenerateQRSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Usos máximos',
-                          style: TextStyle(
-                              color: AppColors.textSecondary, fontSize: 13)),
+                      Text('Usos máximos',
+                          style: TextStyle(color: c.textSecondary, fontSize: 13)),
                       Slider(
                         value: _maxUses.toDouble(),
                         min: 1,
                         max: 10,
                         divisions: 9,
-                        activeColor: AppColors.primary,
+                        activeColor: c.primary,
                         label: _maxUses.toString(),
-                        onChanged: (v) =>
-                            setState(() => _maxUses = v.round()),
+                        onChanged: (v) => setState(() => _maxUses = v.round()),
                       ),
                     ],
                   ),
@@ -1039,18 +1278,16 @@ class _GenerateQRSheetState extends ConsumerState<_GenerateQRSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Vigencia (horas)',
-                          style: TextStyle(
-                              color: AppColors.textSecondary, fontSize: 13)),
+                      Text('Vigencia (horas)',
+                          style: TextStyle(color: c.textSecondary, fontSize: 13)),
                       Slider(
                         value: _hours.toDouble(),
                         min: 1,
                         max: 72,
                         divisions: 71,
-                        activeColor: AppColors.primary,
+                        activeColor: c.primary,
                         label: '${_hours}h',
-                        onChanged: (v) =>
-                            setState(() => _hours = v.round()),
+                        onChanged: (v) => setState(() => _hours = v.round()),
                       ),
                     ],
                   ),
@@ -1060,18 +1297,16 @@ class _GenerateQRSheetState extends ConsumerState<_GenerateQRSheet> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.08),
+                color: c.primary.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.info_outline,
-                      color: AppColors.primary, size: 16),
+                  Icon(Icons.info_outline, color: c.primary, size: 16),
                   const SizedBox(width: 8),
                   Text(
                     '$_maxUses uso(s) · vigente por ${_hours}h',
-                    style: const TextStyle(
-                        color: AppColors.primary, fontSize: 13),
+                    style: TextStyle(color: c.primary, fontSize: 13),
                   ),
                 ],
               ),
@@ -1082,7 +1317,7 @@ class _GenerateQRSheetState extends ConsumerState<_GenerateQRSheet> {
               child: ElevatedButton.icon(
                 onPressed: _loading ? null : _generate,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
+                  backgroundColor: c.primary,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
