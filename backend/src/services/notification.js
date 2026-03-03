@@ -137,4 +137,23 @@ function sendUrgentToRole(tenantId, role, type, title, body, data) {
   })().catch(err => console.error('[FCM] sendUrgentToRole error:', err.message));
 }
 
-module.exports = { sendToUser, sendToUnit, sendToRole, sendToAll, sendUrgentToRole };
+// Envía notificación urgente a todos los usuarios de una unidad (fire-and-forget)
+function sendUrgentToUnit(tenantId, unitId, type, title, body, data) {
+  (async () => {
+    const residents = await prisma.userTenant.findMany({
+      where: { tenantId, unitId, isActive: true },
+      select: { userId: true },
+    });
+    const userIds = [...new Set(residents.map(r => r.userId))];
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, fcmToken: true },
+    });
+    await Promise.all(users.flatMap(u => [
+      _sendUrgent(u.fcmToken, title, body, data),
+      _save(tenantId, u.id, type, title, body, data),
+    ]));
+  })().catch(err => console.error('[FCM] sendUrgentToUnit error:', err.message));
+}
+
+module.exports = { sendToUser, sendToUnit, sendToRole, sendToAll, sendUrgentToRole, sendUrgentToUnit };

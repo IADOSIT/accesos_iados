@@ -9,8 +9,8 @@ const router = Router();
 
 router.use(authenticate, validateTenant);
 
-// ── Tenant settings (solo ADMIN) ──────────────────────────────
-router.get('/tenant', authorize('ADMIN'), ctrl.getTenantSettings);
+// ── Tenant settings ───────────────────────────────────────────
+router.get('/tenant', ctrl.getTenantSettings);                                           // todos los roles — la app lo usa para leer featureFlags y uiTheme
 router.put('/tenant', authorize('ADMIN'), validate(updateTenantSchema), ctrl.updateTenantSettings);
 
 // ── Integraciones de hardware (solo ADMIN) ───────────────────

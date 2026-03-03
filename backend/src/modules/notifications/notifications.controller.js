@@ -57,6 +57,15 @@ async function history(req, res) {
   }
 }
 
+async function markRead(req, res) {
+  try {
+    await svc.markOneRead(req.params.id, req.user.id, req.tenantId);
+    return success(res, null, 'Notificación marcada como leída');
+  } catch (err) {
+    return error(res, err.message, err.status || 500);
+  }
+}
+
 async function broadcast(req, res) {
   try {
     const result = await svc.broadcast(req.tenantId, req.body);
@@ -66,4 +75,4 @@ async function broadcast(req, res) {
   }
 }
 
-module.exports = { list, unreadCount, readAll, getConfig, updateConfig, history, broadcast };
+module.exports = { list, unreadCount, readAll, markRead, getConfig, updateConfig, history, broadcast };

@@ -18,6 +18,7 @@ const paymentRoutes = require('./modules/payments/payments.routes');
 const reportRoutes = require('./modules/reports/reports.routes');
 const configRoutes = require('./modules/config/config.routes');
 const notificationRoutes = require('./modules/notifications/notifications.routes');
+const serviceQrRoutes = require('./modules/service-qr/service-qr.routes');
 
 const app = express();
 
@@ -79,6 +80,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/service-qr', serviceQrRoutes);
 
 // 404
 app.use((req, res) => {
@@ -101,6 +103,12 @@ app.listen(env.PORT, () => {
     const prisma = require('./config/database');
     const devicesService = require('./modules/devices/devices.service');
     const notif = require('./services/notification');
+
+    // Resetear todos a OFFLINE al arrancar — MQTT los pondrá ONLINE si están conectados
+    await prisma.device.updateMany({
+      where: { mqttTopic: { not: null }, isActive: true },
+      data: { status: 'OFFLINE' },
+    });
 
     const devices = await prisma.device.findMany({
       where: { mqttTopic: { not: null }, isActive: true },
@@ -131,11 +139,23 @@ app.listen(env.PORT, () => {
 
   // Cron: limpieza diaria de QRs expirados hace más de 30 días
   const { cleanupExpiredQRs } = require('./modules/access/access.service');
+  const { expireStaleRequests, rotateExpiredQRs } = require('./modules/service-qr/service-qr.service');
   const CLEANUP_INTERVAL = 24 * 60 * 60 * 1000; // 24h
+  const EXPIRE_INTERVAL  =  2 * 60 * 1000;       // 2 min — expirar solicitudes pendientes vencidas
+
   setTimeout(async () => {
     await cleanupExpiredQRs();
     setInterval(cleanupExpiredQRs, CLEANUP_INTERVAL);
-  }, 60 * 1000); // primer cleanup 1 min después de arrancar
+  }, 60 * 1000);
+
+  // Expirar solicitudes de servicio cada 2 minutos
+  setInterval(expireStaleRequests, EXPIRE_INTERVAL);
+
+  // Rotar QRs de servicio diariamente
+  setTimeout(async () => {
+    await rotateExpiredQRs();
+    setInterval(rotateExpiredQRs, CLEANUP_INTERVAL);
+  }, 5 * 60 * 1000); // 5 min después de arrancar
 });
 
 module.exports = app;

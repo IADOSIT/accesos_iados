@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors_scheme.dart';
 import '../../../core/network/api_client.dart';
 import '../../../shared/providers/auth_provider.dart';
+import '../../../shared/providers/tenant_config_provider.dart';
 
 // ── Provider ──────────────────────────────────────────────────────────────
 
@@ -117,6 +119,9 @@ class _ProfileBodyState extends ConsumerState<_ProfileBody> {
     final tenants = profile['tenants'] as List? ?? [];
     final myTenant = tenants.isNotEmpty ? tenants.first : null;
     final unit = myTenant?['unit'];
+
+    final configAsync = ref.watch(tenantConfigProvider);
+    final paymentCfg = configAsync.valueOrNull?.paymentConfig;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -247,6 +252,12 @@ class _ProfileBodyState extends ConsumerState<_ProfileBody> {
 
           const SizedBox(height: 20),
 
+          // Info de pagos (solo RESIDENT con configuración)
+          if (widget.auth.isResident && paymentCfg != null && paymentCfg.hasInfo) ...[
+            _PaymentInfoSection(cfg: paymentCfg),
+            const SizedBox(height: 20),
+          ],
+
           // Cerrar sesión
           SizedBox(
             width: double.infinity,
@@ -280,6 +291,142 @@ class _ProfileBodyState extends ConsumerState<_ProfileBody> {
           ),
 
           const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Payment info section ────────────────────────────────────────────────────
+
+class _PaymentInfoSection extends StatelessWidget {
+  final PaymentConfig cfg;
+  const _PaymentInfoSection({required this.cfg});
+
+  String _formatAmount(double amount, String currency) {
+    final formatted = amount.toStringAsFixed(2).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (m) => '${m[1]},',
+    );
+    return '$currency \$$formatted';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'INFORMACIÓN DE PAGOS',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.textMuted, letterSpacing: 0.5),
+        ),
+        const SizedBox(height: 10),
+
+        // Cuota mensual
+        if (cfg.monthlyAmount > 0) ...[
+          _InfoCard(children: [
+            _InfoRow(label: 'Concepto', value: cfg.paymentConcept),
+            _InfoRow(label: 'Cuota mensual', value: _formatAmount(cfg.monthlyAmount, cfg.currency)),
+            if (cfg.dueDayOfMonth > 0)
+              _InfoRow(label: 'Fecha de pago', value: 'Día ${cfg.dueDayOfMonth} de cada mes'),
+            if (cfg.gracePeriodDays > 0)
+              _InfoRow(label: 'Días de gracia', value: '${cfg.gracePeriodDays} días'),
+          ]),
+          const SizedBox(height: 12),
+        ],
+
+        // Cuentas bancarias
+        if (cfg.bankAccounts.isNotEmpty) ...[
+          Text(
+            'Cuentas para transferencia',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.textMuted, letterSpacing: 0.5),
+          ),
+          const SizedBox(height: 10),
+          ...cfg.bankAccounts.map((acc) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _InfoCard(children: [
+              _InfoRow(label: 'Banco', value: acc.bankName),
+              _InfoRow(label: 'Titular', value: acc.accountHolder),
+              if (acc.clabe != null && acc.clabe!.isNotEmpty)
+                _CopyRow(label: 'CLABE', value: acc.clabe!),
+              if (acc.accountNumber != null && acc.accountNumber!.isNotEmpty)
+                _CopyRow(label: 'No. cuenta', value: acc.accountNumber!),
+              if (acc.referenceTemplate != null && acc.referenceTemplate!.isNotEmpty)
+                _CopyRow(label: 'Referencia', value: acc.referenceTemplate!),
+            ]),
+          )),
+        ],
+
+        // Cuotas adicionales
+        if (cfg.additionalCharges.isNotEmpty) ...[
+          Text(
+            'Cuotas adicionales',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.textMuted, letterSpacing: 0.5),
+          ),
+          const SizedBox(height: 10),
+          _InfoCard(children: cfg.additionalCharges.map((ch) {
+            final subtitle = [
+              if (ch.dueDate != null && ch.dueDate!.isNotEmpty) 'Vence: ${ch.dueDate}',
+              if (ch.description != null && ch.description!.isNotEmpty) ch.description!,
+            ].join(' · ');
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(ch.name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: c.textPrimary)),
+                        if (subtitle.isNotEmpty)
+                          Text(subtitle, style: TextStyle(fontSize: 12, color: c.textMuted)),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    _formatAmount(ch.amount, cfg.currency),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.warning),
+                  ),
+                ],
+              ),
+            );
+          }).toList()),
+        ],
+      ],
+    );
+  }
+}
+
+class _CopyRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _CopyRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
+        children: [
+          Text(label, style: TextStyle(fontSize: 13, color: c.textMuted)),
+          const Spacer(),
+          Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: c.textPrimary)),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () {
+              Clipboard.setData(ClipboardData(text: value));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('$label copiado'),
+                  duration: const Duration(seconds: 2),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            child: Icon(Icons.copy_rounded, size: 16, color: c.primary),
+          ),
         ],
       ),
     );

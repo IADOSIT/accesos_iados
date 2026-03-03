@@ -152,18 +152,24 @@ async function getTenantSettings(tenantId) {
 }
 
 async function updateTenantSettings(tenantId, data) {
-  const { featureFlags, uiTheme, ...tenantFields } = data;
+  const { featureFlags, uiTheme, paymentConfig, emergencyNumbers, serviceQrConfig, ...tenantFields } = data;
 
-  // Si llegan featureFlags o uiTheme, mergearlos en el JSON settings
-  if (featureFlags !== undefined || uiTheme !== undefined) {
+  const hasSettingsChange = featureFlags !== undefined || uiTheme !== undefined
+    || paymentConfig !== undefined || emergencyNumbers !== undefined || serviceQrConfig !== undefined;
+
+  if (hasSettingsChange) {
     const current = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
     const currentSettings = (current?.settings && typeof current.settings === 'object') ? current.settings : {};
     const currentFlags = (currentSettings.featureFlags && typeof currentSettings.featureFlags === 'object') ? currentSettings.featureFlags : {};
+    const currentSvcQr = (currentSettings.serviceQrConfig && typeof currentSettings.serviceQrConfig === 'object') ? currentSettings.serviceQrConfig : {};
 
     tenantFields.settings = {
       ...currentSettings,
       ...(featureFlags !== undefined && { featureFlags: { ...currentFlags, ...featureFlags } }),
       ...(uiTheme !== undefined && { uiTheme }),
+      ...(paymentConfig !== undefined && { paymentConfig }),
+      ...(emergencyNumbers !== undefined && { emergencyNumbers }),
+      ...(serviceQrConfig !== undefined && { serviceQrConfig: { ...currentSvcQr, ...serviceQrConfig } }),
     };
   }
 

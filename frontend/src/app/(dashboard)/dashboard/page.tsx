@@ -81,16 +81,19 @@ export default function DashboardPage() {
   const [csvResult, setCsvResult] = useState<BulkResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const { role, user } = useAuthStore();
-  const canOpen = role === 'ADMIN' || role === 'GUARD';
-  const tenantName = user?.tenants?.[0]?.tenantName || 'Fraccionamiento';
+  const { role, user, tenantId } = useAuthStore();
+  const isSuperAdmin = user?.isSuperAdmin ?? false;
+  const canOpen = role === 'ADMIN' || role === 'GUARD' || isSuperAdmin;
+  const isAdmin = role === 'ADMIN' || isSuperAdmin;
+  const tenantName = user?.tenants?.find(t => t.tenantId === tenantId)?.tenantName || 'Fraccionamiento';
 
   const loadData = useCallback(() => {
+    setLoading(true);
     reportsApi.dashboard()
       .then((res: any) => setData(res.data))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadDevices = useCallback(() => {
     if (!canOpen) return;
@@ -100,12 +103,20 @@ export default function DashboardPage() {
         setDevices(list.filter((d) => d.status === 'ONLINE'));
       })
       .catch(console.error);
-  }, [canOpen]);
+  }, [tenantId, canOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadData();
     loadDevices();
   }, [loadData, loadDevices]);
+
+  // Limpiar caché de unidades CSV al cambiar de fraccionamiento
+  useEffect(() => {
+    setCsvUnits([]);
+    setCsvRows([]);
+    setCsvFileName('');
+    setCsvResult(null);
+  }, [tenantId]);
 
   // Countdown del cooldown
   useEffect(() => {
@@ -409,7 +420,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Registrar pagos CSV */}
-          {role === 'ADMIN' && (
+          {isAdmin && (
             <div className="glass-card flex flex-col">
               <div className="flex items-center gap-3 mb-5">
                 <div className="w-9 h-9 bg-blue-100 rounded-xl flex items-center justify-center">

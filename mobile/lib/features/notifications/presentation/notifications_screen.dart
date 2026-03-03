@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors_scheme.dart';
 import '../../../core/network/api_client.dart';
 import '../providers/notifications_provider.dart';
+import '../../../shared/widgets/service_request_dialog.dart';
 
 class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
@@ -72,7 +73,7 @@ class NotificationsScreen extends ConsumerWidget {
   }
 }
 
-class _NotificationTile extends StatelessWidget {
+class _NotificationTile extends ConsumerWidget {
   final NotificationItem item;
   const _NotificationTile({required this.item});
 
@@ -107,7 +108,7 @@ class _NotificationTile extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final iconColor = _iconColor(c);
     final isUnread = item.isUnread;
@@ -116,6 +117,34 @@ class _NotificationTile extends StatelessWidget {
       color: isUnread ? c.primaryGlow : Colors.transparent,
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        onTap: () async {
+          // Marcar como leída
+          if (item.isUnread) {
+            try {
+              final api = ref.read(apiClientProvider);
+              await api.patch('/notifications/${item.id}/read', data: {});
+              ref.invalidate(notificationsProvider);
+              ref.invalidate(unreadCountProvider);
+            } catch (_) {}
+          }
+          // Si es solicitud de servicio → abrir diálogo
+          if (item.type == 'SERVICE_REQUEST' && item.data != null) {
+            if (context.mounted) {
+              showGeneralDialog(
+                context: context,
+                barrierDismissible: false,
+                barrierLabel: 'Servicio',
+                barrierColor: Colors.transparent,
+                transitionDuration: const Duration(milliseconds: 300),
+                transitionBuilder: (ctx, a1, a2, child) => FadeTransition(
+                  opacity: CurvedAnimation(parent: a1, curve: Curves.easeOut),
+                  child: child,
+                ),
+                pageBuilder: (ctx, _, __) => ServiceRequestDialog(data: item.data!),
+              );
+            }
+          }
+        },
         leading: CircleAvatar(
           backgroundColor: iconColor.withOpacity(0.15),
           child: Icon(_icon(), color: iconColor, size: 20),

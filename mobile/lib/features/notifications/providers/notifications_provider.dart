@@ -8,6 +8,7 @@ class NotificationItem {
   final String body;
   final DateTime? readAt;
   final DateTime createdAt;
+  final Map<String, dynamic>? data;
 
   const NotificationItem({
     required this.id,
@@ -16,6 +17,7 @@ class NotificationItem {
     required this.body,
     this.readAt,
     required this.createdAt,
+    this.data,
   });
 
   bool get isUnread => readAt == null;
@@ -28,6 +30,7 @@ class NotificationItem {
       body: json['body'] as String,
       readAt: json['readAt'] != null ? DateTime.parse(json['readAt'] as String) : null,
       createdAt: DateTime.parse(json['createdAt'] as String),
+      data: json['data'] != null ? Map<String, dynamic>.from(json['data'] as Map) : null,
     );
   }
 }

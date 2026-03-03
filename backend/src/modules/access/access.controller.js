@@ -24,10 +24,12 @@ async function generateQR(req, res) {
 
 async function getLogs(req, res) {
   const { page, limit, skip } = parsePagination(req.query);
+  // RESIDENT: forzar filtro a su propia unidad
+  const unitId = req.user.role === 'RESIDENT' ? req.user.unitId : req.query.unitId;
   const { data, total } = await svc.getLogs(req.tenantId, {
     skip,
     limit,
-    unitId: req.query.unitId,
+    unitId,
     method: req.query.method,
     from: req.query.from,
     to: req.query.to,
@@ -72,4 +74,13 @@ async function getPublicQR(req, res) {
   }
 }
 
-module.exports = { openGate, generateQR, getQRCodes, getLogs, revokeQR, generateQuickQR, getPublicQR };
+async function panic(req, res) {
+  try {
+    const result = await svc.triggerPanic(req.user.id, req.tenantId);
+    return success(res, result, 'Alerta de emergencia activada.');
+  } catch (err) {
+    return error(res, err.message, err.status || 500, { remainingSeconds: err.remainingSeconds });
+  }
+}
+
+module.exports = { openGate, generateQR, getQRCodes, getLogs, revokeQR, generateQuickQR, getPublicQR, panic };

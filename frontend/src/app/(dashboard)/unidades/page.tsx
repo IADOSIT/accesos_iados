@@ -23,9 +23,11 @@ function parseCSVLine(line: string): string[] {
   return result;
 }
 
+const LIMIT = 20;
+
 export default function UnidadesPage() {
-  const { user, role } = useAuthStore();
-  const tenantName = user?.tenants?.[0]?.tenantName || '-';
+  const { user, role, tenantId } = useAuthStore();
+  const tenantName = user?.tenants?.find((t: any) => t.tenantId === tenantId)?.tenantName || '-';
   const canImport = role === 'ADMIN' || user?.isSuperAdmin === true;
 
   const [units, setUnits] = useState<any[]>([]);
@@ -36,6 +38,8 @@ export default function UnidadesPage() {
   const [form, setForm] = useState({ ...emptyForm });
   const [editForm, setEditForm] = useState({ ...emptyForm });
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   // CSV import
   const fileRef = useRef<HTMLInputElement>(null);
@@ -45,15 +49,20 @@ export default function UnidadesPage() {
   const [csvLoading, setCsvLoading] = useState(false);
   const [didImport, setDidImport] = useState(false);
 
-  const load = () => {
+  const load = (p = page, q = search) => {
     setLoading(true);
-    unitsApi.list(search ? `search=${search}` : '')
-      .then((res: any) => setUnits(res.data || []))
+    const params = [`page=${p}`, `limit=${LIMIT}`, ...(q ? [`search=${encodeURIComponent(q)}`] : [])].join('&');
+    unitsApi.list(params)
+      .then((res: any) => { setUnits(res.data || []); setTotal(res.pagination?.total || 0); })
       .catch(console.error)
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [search]);
+  const goToPage = (p: number) => { setPage(p); load(p); };
+
+  // Resetear paginación al cambiar búsqueda o tenant
+  useEffect(() => { setPage(1); load(1, search); }, [search]);       // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setSearch(''); setPage(1); load(1, ''); }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -254,7 +263,13 @@ export default function UnidadesPage() {
           value={search} onChange={(e) => setSearch(e.target.value)} className="input-field max-w-md" />
       </div>
 
-      <DataTable columns={columns} data={units} loading={loading} emptyMessage="No hay unidades registradas" />
+      <DataTable
+        columns={columns}
+        data={units}
+        loading={loading}
+        emptyMessage="No hay unidades registradas"
+        pagination={{ total, page, limit: LIMIT, onPage: goToPage }}
+      />
 
       {/* Modal Crear */}
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Nueva Unidad">

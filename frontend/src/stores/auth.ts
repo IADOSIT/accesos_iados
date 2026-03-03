@@ -29,6 +29,13 @@ interface AuthState {
   checkAuth: () => Promise<void>;
 }
 
+/** Elige el tenant activo: respeta el guardado si sigue siendo válido para este usuario */
+function resolveTenant(tenants: TenantInfo[]): TenantInfo | null {
+  if (!tenants.length) return null;
+  const saved = typeof window !== 'undefined' ? localStorage.getItem('tenantId') : null;
+  return (saved ? tenants.find(t => t.tenantId === saved) : null) ?? tenants[0];
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   token: typeof window !== 'undefined' ? localStorage.getItem('token') : null,
@@ -41,16 +48,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { accessToken, user } = res.data;
 
     localStorage.setItem('token', accessToken);
-    const defaultTenant = user.tenants[0];
-    if (defaultTenant) {
-      localStorage.setItem('tenantId', defaultTenant.tenantId);
-    }
+
+    // Usar el tenant guardado si aún pertenece al usuario; si no, el primero disponible
+    const active = resolveTenant(user.tenants);
+    if (active) localStorage.setItem('tenantId', active.tenantId);
 
     set({
       user,
       token: accessToken,
-      tenantId: defaultTenant?.tenantId || null,
-      role: defaultTenant?.role || null,
+      tenantId: active?.tenantId || null,
+      role: active?.role || null,
       isLoading: false,
     });
   },
@@ -77,12 +84,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     try {
       const res = await GET<{ data: User }>('/auth/me');
-      const tenantId = localStorage.getItem('tenantId');
-      const tenant = res.data.tenants.find(t => t.tenantId === tenantId);
-      set({ user: res.data, isLoading: false, role: tenant?.role || null });
+      const user = res.data;
+
+      // Validar y resolver tenant guardado
+      const active = resolveTenant(user.tenants);
+      if (active) localStorage.setItem('tenantId', active.tenantId);
+      else { localStorage.removeItem('tenantId'); }
+
+      set({
+        user,
+        tenantId: active?.tenantId || null,
+        role: active?.role || null,
+        isLoading: false,
+      });
     } catch {
       localStorage.removeItem('token');
-      set({ user: null, token: null, isLoading: false });
+      localStorage.removeItem('tenantId');
+      set({ user: null, token: null, tenantId: null, role: null, isLoading: false });
     }
   },
 }));

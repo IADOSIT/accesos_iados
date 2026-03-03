@@ -128,9 +128,9 @@ class _VisitorsScreenState extends ConsumerState<VisitorsScreen>
           labelColor: c.primary,
           unselectedLabelColor: c.textMuted,
           tabs: const [
+            Tab(text: 'QR Rápido'),
             Tab(text: 'Activos'),
             Tab(text: 'Vencidos'),
-            Tab(text: 'QR Rápido'),
           ],
         ),
       ),
@@ -143,7 +143,9 @@ class _VisitorsScreenState extends ConsumerState<VisitorsScreen>
       body: TabBarView(
         controller: _tabCtrl,
         children: [
-          // Tab 1: QRs activos
+          // Tab 1: QR Rápido
+          const _QuickQRTab(),
+          // Tab 2: QRs activos
           allQRs.when(
             loading: () => Center(child: CircularProgressIndicator(color: c.primary)),
             error: (e, _) => Center(child: Text(e.toString(), style: TextStyle(color: c.error))),
@@ -155,7 +157,7 @@ class _VisitorsScreenState extends ConsumerState<VisitorsScreen>
               onRevoked: () => ref.invalidate(qrCodesProvider),
             ),
           ),
-          // Tab 2: QRs vencidos
+          // Tab 3: QRs vencidos
           allQRs.when(
             loading: () => Center(child: CircularProgressIndicator(color: c.primary)),
             error: (e, _) => Center(child: Text(e.toString(), style: TextStyle(color: c.error))),
@@ -167,8 +169,6 @@ class _VisitorsScreenState extends ConsumerState<VisitorsScreen>
               onRevoked: () => ref.invalidate(qrCodesProvider),
             ),
           ),
-          // Tab 3: QR Rápido
-          const _QuickQRTab(),
         ],
       ),
     );
@@ -189,7 +189,6 @@ class _QuickQRTabState extends ConsumerState<_QuickQRTab> {
     (icon: '🚗', label: 'Uber/Didi'),
     (icon: '📦', label: 'Delivery'),
     (icon: '🔧', label: 'Servicio'),
-    (icon: '👤', label: 'Visita'),
   ];
 
   Map<String, dynamic>? _generatedQR;
@@ -1123,7 +1122,7 @@ class _GenerateQRSheet extends ConsumerStatefulWidget {
 
 class _GenerateQRSheetState extends ConsumerState<_GenerateQRSheet> {
   final _nameCtrl = TextEditingController();
-  int _maxUses = 1;
+  int _maxUses = 2;
   int _hours = 24;
   bool _loading = false;
   List<dynamic> _units = [];
@@ -1144,14 +1143,36 @@ class _GenerateQRSheetState extends ConsumerState<_GenerateQRSheet> {
 
   Future<void> _loadUnits() async {
     try {
-      final api = ref.read(apiClientProvider);
-      final res = await api.get('/units');
-      final list = res.data['data'] as List? ?? [];
-      if (mounted) {
-        setState(() {
-          _units = list;
-          if (list.isNotEmpty) _selectedUnitId = list.first['id'] as String;
-        });
+      final api  = ref.read(apiClientProvider);
+      final auth = ref.read(authProvider);
+
+      if (auth.isResident) {
+        // RESIDENT: obtener solo su propia unidad desde /auth/me
+        final res     = await api.get('/auth/me');
+        final profile = res.data['data'] as Map<String, dynamic>? ?? {};
+        final tenants = profile['tenants'] as List? ?? [];
+        final myTenant = tenants.firstWhere(
+          (t) => (t['tenantId'] as String?) == auth.tenantId,
+          orElse: () => tenants.isNotEmpty ? tenants.first : null,
+        );
+        final unit = myTenant?['unit'] as Map<String, dynamic>?;
+        if (unit != null && mounted) {
+          setState(() {
+            _units = [unit];
+            _selectedUnitId = unit['id'] as String?;
+          });
+        } else if (mounted) {
+          setState(() => _unitsError = 'No tienes una unidad asignada');
+        }
+      } else {
+        final res  = await api.get('/units');
+        final list = res.data['data'] as List? ?? [];
+        if (mounted) {
+          setState(() {
+            _units = list;
+            if (list.isNotEmpty) _selectedUnitId = list.first['id'] as String;
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -1263,9 +1284,9 @@ class _GenerateQRSheetState extends ConsumerState<_GenerateQRSheet> {
                           style: TextStyle(color: c.textSecondary, fontSize: 13)),
                       Slider(
                         value: _maxUses.toDouble(),
-                        min: 1,
+                        min: 2,
                         max: 10,
-                        divisions: 9,
+                        divisions: 8,
                         activeColor: c.primary,
                         label: _maxUses.toString(),
                         onChanged: (v) => setState(() => _maxUses = v.round()),

@@ -2,7 +2,9 @@ const svc = require('./reports.service');
 const { success, error } = require('../../utils/apiResponse');
 
 async function dashboard(req, res) {
-  const data = await svc.dashboard(req.tenantId);
+  const userId = req.user?.role === 'RESIDENT' ? req.user.id : null;
+  const unitId = req.user?.role === 'RESIDENT' ? req.user.unitId : null;
+  const data = await svc.dashboard(req.tenantId, userId, unitId);
   return success(res, data);
 }
 

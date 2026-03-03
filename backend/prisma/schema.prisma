@@ -33,6 +33,8 @@ model Tenant {
   auditLogs          AuditLog[]
   integrationConfigs IntegrationConfig[]
   panicAlerts        PanicAlert[]
+  serviceQr          ServiceQR?
+  serviceRequests    ServiceRequest[]
 
   @@map("tenants")
 }
@@ -109,12 +111,13 @@ model Unit {
   isActive    Boolean @default(true)
   isDelinquent Boolean @default(false)
 
-  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  residents  UserTenant[]
-  accessLogs AccessLog[]
-  payments   Payment[]
-  charges    Charge[]
-  qrCodes    QRCode[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  residents       UserTenant[]
+  accessLogs      AccessLog[]
+  payments        Payment[]
+  charges         Charge[]
+  qrCodes         QRCode[]
+  serviceRequests ServiceRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -406,6 +409,56 @@ model PanicAlert {
   @@index([tenantId, createdAt])
   @@index([userId, createdAt])
   @@map("panic_alerts")
+}
+
+// =============================================
+// QR SERVICIOS EXTERNOS
+// =============================================
+
+enum ServiceRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+model ServiceQR {
+  id        String   @id @default(uuid())
+  tenantId  String   @unique
+  code      String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requests ServiceRequest[]
+
+  @@map("service_qrs")
+}
+
+model ServiceRequest {
+  id           String               @id @default(uuid())
+  tenantId     String
+  qrId         String
+  unitId       String?
+  service      String
+  photoData    String?              @db.Text
+  visitorPhone String?
+  status       ServiceRequestStatus @default(PENDING)
+  approvedById String?
+  approvedAt   DateTime?
+  deviceId     String?
+  notes        String?
+  expiresAt    DateTime
+
+  tenant Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  qr     ServiceQR @relation(fields: [qrId], references: [id], onDelete: Cascade)
+  unit   Unit?     @relation(fields: [unitId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("service_requests")
 }
 
 // =============================================

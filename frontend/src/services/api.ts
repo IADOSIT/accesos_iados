@@ -99,6 +99,16 @@ export const notificationsApi = {
   broadcast: (data: unknown) => POST('/notifications/broadcast', data),
 };
 
+// ============ SERVICE QR ============
+export const serviceQrApi = {
+  currentQR:      () => GET('/service-qr/current'),
+  regenerate:     () => POST('/service-qr/regenerate', {}),
+  listRequests:   (params?: string) => GET(`/service-qr/requests${params ? `?${params}` : ''}`),
+  getRequest:     (id: string) => GET(`/service-qr/requests/${id}`),
+  approve:        (id: string) => PATCH(`/service-qr/requests/${id}/approve`, {}),
+  reject:         (id: string, notes?: string) => PATCH(`/service-qr/requests/${id}/reject`, { notes }),
+};
+
 // ============ REPORTES ============
 export const reportsApi = {
   dashboard: () => GET('/reports/dashboard'),

@@ -33,11 +33,14 @@ export default function UsuariosPage() {
   const [tenants, setTenants] = useState<any[]>([]);
   const [units, setUnits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const LIMIT = 20;
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editRow, setEditRow] = useState<any>(null);
   const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', phone: '', role: 'RESIDENT', tenantId: tenantId || '' });
-  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', phone: '', role: 'RESIDENT', unitId: '' });
+  const [editForm, setEditForm] = useState({ email: '', firstName: '', lastName: '', phone: '', role: 'RESIDENT', unitId: '', password: '' });
 
   // CSV import
   const fileRef = useRef<HTMLInputElement>(null);
@@ -48,21 +51,27 @@ export default function UsuariosPage() {
   const [didImport, setDidImport] = useState(false);
   const [csvTenantId, setCsvTenantId] = useState(tenantId || '');
 
-  const load = () => {
+  const load = (p = page) => {
     setLoading(true);
-    usersApi.list()
-      .then((res: any) => setUsers(res.data || []))
+    usersApi.list(`page=${p}&limit=${LIMIT}`)
+      .then((res: any) => { setUsers(res.data || []); setTotal(res.pagination?.total || 0); })
       .catch(console.error)
       .finally(() => setLoading(false));
   };
 
+  const goToPage = (p: number) => { setPage(p); load(p); };
+
   useEffect(() => {
-    load();
+    setPage(1);
+    load(1);
+    unitsApi.list('limit=1000').then((res: any) => setUnits(res.data || [])).catch(console.error);
+  }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     if (isSuperAdmin) {
       tenantsApi.list().then((res: any) => setTenants(res.data || [])).catch(console.error);
     }
-    unitsApi.list('').then((res: any) => setUnits(res.data || [])).catch(console.error);
-  }, [isSuperAdmin]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,11 +88,13 @@ export default function UsuariosPage() {
   const handleEditOpen = (row: any) => {
     setEditRow(row);
     setEditForm({
+      email: row.user?.email || '',
       firstName: row.user?.firstName || '',
       lastName: row.user?.lastName || '',
       phone: row.user?.phone || '',
       role: row.role || 'RESIDENT',
       unitId: row.unit?.id || '',
+      password: '',
     });
     setShowEditModal(true);
   };
@@ -93,6 +104,7 @@ export default function UsuariosPage() {
     try {
       const payload: any = { ...editForm };
       if (!payload.unitId) payload.unitId = null;
+      if (!payload.password) delete payload.password; // no enviar si está vacío
       await usersApi.update(editRow.userId || editRow.user?.id, payload);
       setShowEditModal(false);
       load();
@@ -240,7 +252,13 @@ export default function UsuariosPage() {
         }
       />
 
-      <DataTable columns={columns} data={users} loading={loading} emptyMessage="No hay usuarios registrados" />
+      <DataTable
+        columns={columns}
+        data={users}
+        loading={loading}
+        emptyMessage="No hay usuarios registrados"
+        pagination={{ total, page, limit: LIMIT, onPage: goToPage }}
+      />
 
       {/* Modal Crear */}
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Nuevo Usuario">
@@ -296,6 +314,10 @@ export default function UsuariosPage() {
       {/* Modal Editar */}
       <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Editar Usuario">
         <form onSubmit={handleEditSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Email *</label>
+            <input className="input-field" type="email" value={editForm.email} onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} required />
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Nombre *</label>
@@ -326,6 +348,19 @@ export default function UsuariosPage() {
               <option value="">— Sin unidad —</option>
               {units.map((u: any) => <option key={u.id} value={u.id}>{u.identifier}{u.block ? ` — ${u.block}` : ''}</option>)}
             </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Nueva contraseña <span className="text-slate-400 font-normal">(dejar vacío para no cambiar)</span>
+            </label>
+            <input
+              className="input-field"
+              type="password"
+              value={editForm.password}
+              onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+              placeholder="Mínimo 6 caracteres"
+              minLength={editForm.password ? 6 : undefined}
+            />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary">Cancelar</button>

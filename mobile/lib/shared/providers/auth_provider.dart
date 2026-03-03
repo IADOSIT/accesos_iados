@@ -105,6 +105,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         lastName: results[6],
         mustChangePassword: mustChange,
       );
+      _registerFCMToken(); // refrescar token en caso de que Firebase lo rotó
     } else {
       state = const AuthState();
     }
@@ -127,7 +128,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
         state = state.copyWith(isLoading: false, error: 'Sin fraccionamiento asignado');
         return false;
       }
-      final tenant = tenants.first;
+      // Respetar el tenant guardado si el usuario sigue perteneciendo a él
+      final savedTenantId = await _storage.getTenantId();
+      final tenant = (savedTenantId != null
+              ? tenants.firstWhere(
+                  (t) => t['tenantId'] == savedTenantId,
+                  orElse: () => tenants.first,
+                )
+              : tenants.first) as Map;
       final tenantId = tenant['tenantId'] as String;
       final role = tenant['role'] as String;
       final tenantName = tenant['tenantName'] as String?;
@@ -170,6 +178,13 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
+    // Limpiar token FCM del servidor para que no lleguen notificaciones al dispositivo
+    if (!kIsWeb) {
+      try {
+        await _api.put('/auth/fcm-token', data: {'token': ''});
+        await FirebaseMessaging.instance.deleteToken();
+      } catch (_) {}
+    }
     await _storage.clear();
     state = const AuthState();
   }

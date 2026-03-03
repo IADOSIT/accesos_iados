@@ -22,6 +22,13 @@ async function markAllRead(userId, tenantId) {
   });
 }
 
+async function markOneRead(notificationId, userId, tenantId) {
+  return prisma.notification.updateMany({
+    where: { id: notificationId, userId, tenantId },
+    data: { readAt: new Date() },
+  });
+}
+
 async function getConfig(tenantId) {
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
@@ -100,4 +107,4 @@ async function broadcast(tenantId, { target, userId, unitId, role, title, body }
   return { queued: true };
 }
 
-module.exports = { getForUser, getUnreadCount, markAllRead, getConfig, updateConfig, getHistory, broadcast };
+module.exports = { getForUser, getUnreadCount, markAllRead, markOneRead, getConfig, updateConfig, getHistory, broadcast };

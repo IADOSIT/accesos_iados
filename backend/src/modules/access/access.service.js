@@ -289,14 +289,20 @@ async function triggerPanic(userId, tenantId) {
   const membership = await prisma.userTenant.findUnique({
     where: { userId_tenantId: { userId, tenantId } },
     include: {
-      user:   { select: { firstName: true, lastName: true } },
-      unit:   { select: { id: true, identifier: true } },
+      user:   { select: { firstName: true, lastName: true, phone: true } },
+      unit:   { select: { id: true, identifier: true, block: true, floor: true, ownerPhone: true } },
       tenant: { select: { name: true } },
     },
   });
 
-  const userName  = `${membership?.user?.firstName || ''} ${membership?.user?.lastName || ''}`.trim() || 'Un usuario';
-  const unitLabel = membership?.unit?.identifier ? `Unidad ${membership.unit.identifier}` : null;
+  const firstName  = membership?.user?.firstName || '';
+  const lastName   = membership?.user?.lastName  || '';
+  const userName   = `${firstName} ${lastName}`.trim() || 'Un usuario';
+  const phone      = membership?.user?.phone || membership?.unit?.ownerPhone || '';
+  const unitId_val = membership?.unit?.identifier || '';
+  const block_val  = membership?.unit?.block || '';
+  const floor_val  = membership?.unit?.floor || '';
+  const unitLabel  = unitId_val ? `Unidad ${unitId_val}${block_val ? ` – Manzana ${block_val}` : ''}${floor_val ? ` Piso ${floor_val}` : ''}` : null;
   const tenantName = membership?.tenant?.name || 'Fraccionamiento';
 
   // Guardar en BD
@@ -304,7 +310,7 @@ async function triggerPanic(userId, tenantId) {
     data: {
       tenantId,
       userId,
-      unitId:    membership?.unit?.id    ?? null,
+      unitId:    membership?.unit?.id ?? null,
       userName,
       unitLabel: unitLabel ?? null,
     },
@@ -315,10 +321,19 @@ async function triggerPanic(userId, tenantId) {
   const body  = unitLabel
     ? `${userName} (${unitLabel}) activó el botón de pánico`
     : `${userName} activó el botón de pánico`;
-  const data  = { type: 'PANIC', userId };
+  const data  = {
+    type: 'PANIC',
+    userId,
+    userName,
+    unitLabel: unitLabel || '',
+    phone,
+    unitIdentifier: unitId_val,
+    block: block_val,
+  };
 
-  notif.sendUrgentToRole(tenantId, 'ADMIN', 'PANIC', title, body, data);
-  notif.sendUrgentToRole(tenantId, 'GUARD', 'PANIC', title, body, data);
+  notif.sendUrgentToRole(tenantId, 'ADMIN',    'PANIC', title, body, data);
+  notif.sendUrgentToRole(tenantId, 'GUARD',    'PANIC', title, body, data);
+  notif.sendUrgentToRole(tenantId, 'RESIDENT', 'PANIC', title, body, data);
 
   return { cooldownSeconds: PANIC_COOLDOWN_MS / 1000 };
 }

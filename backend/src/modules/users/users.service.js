@@ -21,11 +21,22 @@ async function create(tenantId, data) {
   const existing = await prisma.userTenant.findUnique({
     where: { userId_tenantId: { userId: user.id, tenantId } },
   });
-  if (existing) throw { status: 409, message: 'Usuario ya pertenece a este tenant' };
 
-  await prisma.userTenant.create({
-    data: { userId: user.id, tenantId, role: data.role, unitId: data.unitId },
-  });
+  if (existing) {
+    // Si existe pero está inactivo, reactivarlo con el nuevo rol
+    if (!existing.isActive) {
+      await prisma.userTenant.update({
+        where: { userId_tenantId: { userId: user.id, tenantId } },
+        data: { isActive: true, role: data.role, unitId: data.unitId ?? existing.unitId },
+      });
+    } else {
+      throw { status: 409, message: 'Usuario ya pertenece a este fraccionamiento' };
+    }
+  } else {
+    await prisma.userTenant.create({
+      data: { userId: user.id, tenantId, role: data.role, unitId: data.unitId },
+    });
+  }
 
   return { ...user, role: data.role, passwordHash: undefined };
 }
@@ -59,6 +70,15 @@ async function update(tenantId, userId, data) {
   if (data.firstName) updateUser.firstName = data.firstName;
   if (data.lastName) updateUser.lastName = data.lastName;
   if (data.phone !== undefined) updateUser.phone = data.phone;
+  if (data.email) {
+    const conflict = await prisma.user.findFirst({ where: { email: data.email, id: { not: userId } } });
+    if (conflict) throw { status: 409, message: 'El email ya está en uso por otro usuario' };
+    updateUser.email = data.email;
+  }
+  if (data.password) {
+    updateUser.passwordHash = await bcrypt.hash(data.password, 12);
+    updateUser.mustChangePassword = false;
+  }
 
   if (Object.keys(updateUser).length > 0) {
     await prisma.user.update({ where: { id: userId }, data: updateUser });

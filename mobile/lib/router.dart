@@ -1,9 +1,15 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'features/auth/presentation/login_screen.dart';
+import 'core/network/api_client.dart';
+import 'shared/widgets/service_request_dialog.dart';
+import 'shared/widgets/panic_alert_dialog.dart';
 import 'features/dashboard/presentation/dashboard_screen.dart';
 import 'features/access/presentation/access_screen.dart';
 import 'features/visitors/presentation/visitors_screen.dart';
@@ -13,7 +19,7 @@ import 'features/profile/presentation/profile_screen.dart';
 import 'features/auth/presentation/force_change_password_screen.dart';
 import 'features/notifications/providers/notifications_provider.dart';
 import 'shared/providers/auth_provider.dart';
-import 'core/constants/app_colors.dart';
+import 'shared/providers/tenant_config_provider.dart';
 import 'core/constants/app_colors_scheme.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -111,12 +117,82 @@ class _MainShellState extends ConsumerState<_MainShell> {
   @override
   void initState() {
     super.initState();
-    // Escuchar push en foreground para refrescar badge
     if (!kIsWeb) {
-      FirebaseMessaging.onMessage.listen((_) {
+      // Foreground: app abierta
+      FirebaseMessaging.onMessage.listen((message) {
         ref.invalidate(unreadCountProvider);
+        if (message.data['type'] == 'PANIC') {
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showPanicAlert(message.data);
+          });
+        } else if (message.data['type'] == 'SERVICE_REQUEST') {
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showServiceRequestAlert(message.data);
+          });
+        }
+      });
+
+      // Background: usuario toca la notificación del sistema
+      FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        ref.invalidate(unreadCountProvider);
+        if (message.data['type'] == 'SERVICE_REQUEST') {
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showServiceRequestAlert(message.data);
+          });
+        } else if (message.data['type'] == 'PANIC') {
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showPanicAlert(message.data);
+          });
+        }
+      });
+
+      // Terminada: app abierta desde notificación
+      FirebaseMessaging.instance.getInitialMessage().then((message) {
+        if (message == null) return;
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (message.data['type'] == 'SERVICE_REQUEST') {
+            _showServiceRequestAlert(message.data);
+          } else if (message.data['type'] == 'PANIC') {
+            _showPanicAlert(message.data);
+          }
+        });
       });
     }
+  }
+
+  void _showServiceRequestAlert(Map<String, dynamic> data) {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierLabel: 'Servicio',
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 300),
+      transitionBuilder: (ctx, a1, a2, child) => FadeTransition(
+        opacity: CurvedAnimation(parent: a1, curve: Curves.easeOut),
+        child: child,
+      ),
+      pageBuilder: (ctx, _, __) => ServiceRequestDialog(data: data),
+    );
+  }
+
+  void _showPanicAlert(Map<String, dynamic> data) {
+    final config = ref.read(tenantConfigProvider).valueOrNull;
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierLabel: 'Pánico',
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 350),
+      transitionBuilder: (ctx, a1, a2, child) => FadeTransition(
+        opacity: CurvedAnimation(parent: a1, curve: Curves.easeOut),
+        child: child,
+      ),
+      pageBuilder: (ctx, _, __) => PanicAlertFullScreen(
+        data: data,
+        emergencyContacts: config?.emergencyContacts ?? [],
+      ),
+    );
   }
 
   @override
@@ -288,6 +364,9 @@ class _NotificationNavItem extends ConsumerWidget {
     );
   }
 }
+
+// PanicAlertFullScreen y PanicRow definidos en shared/widgets/panic_alert_dialog.dart
+// ServiceRequestDialog definido en shared/widgets/service_request_dialog.dart
 
 class _AuthRouteNotifier extends ChangeNotifier {
   final Ref _ref;

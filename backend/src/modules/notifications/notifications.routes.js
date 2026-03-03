@@ -11,6 +11,7 @@ router.use(authenticate, validateTenant);
 router.get('/', ctrl.list);
 router.get('/unread-count', ctrl.unreadCount);
 router.patch('/read-all', ctrl.readAll);
+router.patch('/:id/read', ctrl.markRead);
 
 // Solo ADMIN
 router.get('/config', authorize('ADMIN'), ctrl.getConfig);

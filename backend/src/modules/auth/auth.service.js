@@ -6,7 +6,7 @@ const env = require('../../config/env');
 async function login(email, password) {
   const user = await prisma.user.findUnique({
     where: { email },
-    include: { tenants: { include: { tenant: true } } },
+    include: { tenants: { orderBy: { createdAt: 'asc' }, include: { tenant: true } } },
   });
 
   if (!user || !user.isActive) {
@@ -77,7 +77,7 @@ async function refreshAccessToken(refreshToken) {
   const payload = jwt.verify(refreshToken, env.JWT_SECRET);
   const user = await prisma.user.findUnique({
     where: { id: payload.id },
-    include: { tenants: { include: { tenant: true } } },
+    include: { tenants: { orderBy: { createdAt: 'asc' }, include: { tenant: true } } },
   });
 
   if (!user || !user.isActive) {
@@ -113,7 +113,8 @@ async function changePassword(userId, currentPassword, newPassword) {
 }
 
 async function updateFCMToken(userId, token) {
-  await prisma.user.update({ where: { id: userId }, data: { fcmToken: token } });
+  const value = token && token.trim() !== '' ? token : null;
+  await prisma.user.update({ where: { id: userId }, data: { fcmToken: value } });
 }
 
 async function getMe(userId) {

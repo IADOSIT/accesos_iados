@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +14,7 @@ import '../../../shared/providers/auth_provider.dart';
 import '../../../shared/providers/tenant_config_provider.dart';
 import '../../../shared/widgets/stat_card.dart';
 import '../../../shared/widgets/iados_logo.dart';
+import '../../../shared/widgets/panic_alert_dialog.dart';
 
 final dashboardStatsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final api = ref.watch(apiClientProvider);
@@ -22,6 +25,8 @@ final dashboardStatsProvider = FutureProvider<Map<String, dynamic>>((ref) async 
 });
 
 final recentAccessProvider = FutureProvider<List<dynamic>>((ref) async {
+  final auth = ref.watch(authProvider);
+  if (auth.tenantId == null) return [];
   final api = ref.watch(apiClientProvider);
   final res = await api.get('/access/logs', params: {'limit': '8'});
   return res.data['data'] as List? ?? [];
@@ -132,45 +137,58 @@ class DashboardScreen extends ConsumerWidget {
 
                 const SizedBox(height: 24),
 
-                // Actividad reciente (ADMIN y GUARD siempre; RESIDENT si no hay botones)
-                if (auth.isAdmin || auth.isGuard) ...[
-                  FadeInUp(
-                    delay: const Duration(milliseconds: 300),
-                    child: Row(
-                      children: [
-                        Text(
-                          AppStrings.recentActivity,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
+                // Botón de pánico — todos los roles, siempre visible
+                FadeInUp(
+                  delay: const Duration(milliseconds: 300),
+                  child: const _PanicButton(),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Actividad reciente (todos los roles)
+                FadeInUp(
+                  delay: const Duration(milliseconds: 400),
+                  child: Row(
+                    children: [
+                      Text(
+                        auth.isResident ? 'Mis accesos recientes' : AppStrings.recentActivity,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
-                        const Spacer(),
+                      ),
+                      const Spacer(),
+                      if (auth.isAdmin || auth.isGuard)
                         TextButton(
                           onPressed: () => context.go('/access'),
                           child: const Text('Ver todo'),
                         ),
-                      ],
-                    ),
+                    ],
                   ),
+                ),
 
-                  const SizedBox(height: 8),
+                const SizedBox(height: 8),
 
-                  recentAccess.when(
-                    loading: () => _AccessLogSkeleton(),
-                    error: (e, _) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(e.toString(),
-                          style: TextStyle(color: context.colors.error, fontSize: 13)),
-                    ),
-                    data: (logs) => Column(
-                      children: logs
-                          .map((log) => _AccessLogItem(log: log))
-                          .toList(),
-                    ),
+                recentAccess.when(
+                  loading: () => _AccessLogSkeleton(),
+                  error: (e, _) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(e.toString(),
+                        style: TextStyle(color: context.colors.error, fontSize: 13)),
                   ),
-                ],
+                  data: (logs) => logs.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Center(
+                            child: Text('Sin accesos recientes',
+                                style: TextStyle(color: context.colors.textMuted, fontSize: 13)),
+                          ),
+                        )
+                      : Column(
+                          children: logs.map((log) => _AccessLogItem(log: log)).toList(),
+                        ),
+                ),
 
                 const SizedBox(height: 80),
               ]),
@@ -419,26 +437,29 @@ class _ResidentSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final c = context.colors;
-    final charges = data['pendingCharges'];
-    final nextPayment = data['nextDueDate'] as String?;
-    final lastAccess = data['lastAccess'] as String?;
+    final resident = data['resident'] as Map<String, dynamic>?;
+
+    final isDelinquent = resident?['isDelinquent'] as bool? ?? false;
+    final pendingCharges = resident?['pendingCharges'] as int? ?? 0;
+    final pendingAmount = (resident?['pendingAmount'] as num?)?.toDouble() ?? 0.0;
+    final nextDueDate = resident?['nextDueDate'] as String?;
+
+    // Color basado en morosidad
+    final statusColor = isDelinquent ? c.error : c.success;
+    final paymentColor = isDelinquent ? c.error : (pendingCharges > 0 ? c.warning : c.success);
 
     String nextPayStr = '';
-    if (nextPayment != null) {
+    if (nextDueDate != null) {
       try {
-        final dt = DateTime.parse(nextPayment).toLocal();
+        final dt = DateTime.parse(nextDueDate).toLocal();
         nextPayStr = DateFormat('dd/MM/yyyy').format(dt);
       } catch (_) {}
     }
-    String lastAccessStr = '';
-    if (lastAccess != null) {
-      try {
-        final dt = DateTime.parse(lastAccess).toLocal();
-        lastAccessStr = DateFormat('dd/MM HH:mm').format(dt);
-      } catch (_) {}
-    }
+
+    final amountStr = pendingAmount > 0
+        ? NumberFormat.currency(locale: 'es_MX', symbol: '\$').format(pendingAmount)
+        : '\$0';
 
     return Column(
       children: [
@@ -446,48 +467,34 @@ class _ResidentSummary extends StatelessWidget {
           children: [
             Expanded(
               child: _SummaryCard(
-                icon: Icons.check_circle_outline_rounded,
+                icon: isDelinquent ? Icons.cancel_rounded : Icons.check_circle_outline_rounded,
                 label: 'Estado cuenta',
-                value: 'Activo',
-                color: c.success,
+                value: isDelinquent ? 'Moroso' : 'Al corriente',
+                color: statusColor,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: _SummaryCard(
-                icon: Icons.receipt_long_rounded,
-                label: 'Cargos pendientes',
-                value: charges?.toString() ?? '0',
-                color: charges != null && charges > 0 ? c.warning : c.success,
+              child: GestureDetector(
+                onTap: () => context.go('/payments'),
+                child: _SummaryCard(
+                  icon: Icons.receipt_long_rounded,
+                  label: 'Saldo pendiente',
+                  value: amountStr,
+                  color: paymentColor,
+                ),
               ),
             ),
           ],
         ),
-        if (nextPayStr.isNotEmpty || lastAccessStr.isNotEmpty) ...[
+        if (nextPayStr.isNotEmpty) ...[
           const SizedBox(height: 12),
-          Row(
-            children: [
-              if (nextPayStr.isNotEmpty)
-                Expanded(
-                  child: _SummaryCard(
-                    icon: Icons.calendar_today_rounded,
-                    label: 'Próximo pago',
-                    value: nextPayStr,
-                    color: c.info,
-                  ),
-                ),
-              if (nextPayStr.isNotEmpty && lastAccessStr.isNotEmpty)
-                const SizedBox(width: 12),
-              if (lastAccessStr.isNotEmpty)
-                Expanded(
-                  child: _SummaryCard(
-                    icon: Icons.login_rounded,
-                    label: 'Último acceso',
-                    value: lastAccessStr,
-                    color: c.textMuted,
-                  ),
-                ),
-            ],
+          _SummaryCard(
+            icon: Icons.calendar_today_rounded,
+            label: 'Fecha límite de pago',
+            value: nextPayStr,
+            color: isDelinquent ? c.error : c.info,
+            fullWidth: true,
           ),
         ],
       ],
@@ -500,33 +507,55 @@ class _SummaryCard extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
-  const _SummaryCard({required this.icon, required this.label, required this.value, required this.color});
+  final bool fullWidth;
+  const _SummaryCard({required this.icon, required this.label, required this.value, required this.color, this.fullWidth = false});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
+    final card = Container(
+      width: fullWidth ? double.infinity : null,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: cs.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outline.withOpacity(0.2)),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
-            child: Icon(icon, color: color, size: 16),
-          ),
-          const SizedBox(height: 10),
-          Text(label, style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.5))),
-          const SizedBox(height: 2),
-          Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: cs.onSurface)),
-        ],
-      ),
+      child: fullWidth
+          ? Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+                  child: Icon(icon, color: color, size: 16),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.5))),
+                    const SizedBox(height: 2),
+                    Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: color)),
+                  ],
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+                  child: Icon(icon, color: color, size: 16),
+                ),
+                const SizedBox(height: 10),
+                Text(label, style: TextStyle(fontSize: 11, color: cs.onSurface.withOpacity(0.5))),
+                const SizedBox(height: 2),
+                Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: color)),
+              ],
+            ),
     );
+    return card;
   }
 }
 
@@ -544,39 +573,51 @@ class _AccessButtons extends ConsumerStatefulWidget {
 class _AccessButtonsState extends ConsumerState<_AccessButtons> {
   final Map<String, bool> _loading = {};
 
-  Future<void> _openGate({required String direction, String? accessType}) async {
+  Future<void> _openGate({required String direction, String? accessType, String? deviceId}) async {
     final key = '$direction-${accessType ?? 'any'}';
     setState(() => _loading[key] = true);
     try {
       final api = ref.read(apiClientProvider);
-      final devRes = await api.get('/devices');
-      final allDevices = devRes.data['data'] as List? ?? [];
 
-      List devices = allDevices
-          .where((d) => d['isActive'] != false)
-          .toList();
+      String? resolvedDeviceId = (deviceId != null && deviceId.isNotEmpty) ? deviceId : null;
 
-      // Filtrar por accessType si hay botón específico
-      if (accessType != null) {
-        final typed = devices.where((d) => d['accessType'] == accessType).toList();
-        if (typed.isNotEmpty) devices = typed;
-      }
-
-      final online = devices.where((d) => d['status'] == 'ONLINE').toList();
-      final selected = online.isNotEmpty ? online : devices;
-
-      if (selected.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: const Text('No hay dispositivos disponibles'), backgroundColor: context.colors.error),
-          );
+      if (resolvedDeviceId == null) {
+        // Solo ADMIN y GUARD pueden consultar la lista de dispositivos como fallback
+        final auth = ref.read(authProvider);
+        if (!auth.isAdmin && !auth.isGuard) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Dispositivo no configurado. Contacta al administrador.'),
+                backgroundColor: context.colors.warning,
+              ),
+            );
+          }
+          return;
         }
-        return;
+        // Fallback para ADMIN/GUARD: buscar el primer dispositivo ONLINE
+        final devRes = await api.get('/devices');
+        final allDevices = devRes.data['data'] as List? ?? [];
+        List candidates = allDevices.where((d) => d['isActive'] != false).toList();
+        if (accessType != null) {
+          final typed = candidates.where((d) => d['accessType'] == accessType).toList();
+          if (typed.isNotEmpty) candidates = typed;
+        }
+        final online = candidates.where((d) => d['status'] == 'ONLINE').toList();
+        final selected = online.isNotEmpty ? online : candidates;
+        if (selected.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: const Text('No hay dispositivos disponibles'), backgroundColor: context.colors.error),
+            );
+          }
+          return;
+        }
+        resolvedDeviceId = selected.first['id'] as String;
       }
 
-      final deviceId = selected.first['id'] as String;
       final result = await api.post('/access/open', data: {
-        'deviceId': deviceId,
+        'deviceId': resolvedDeviceId,
         'method': 'APP',
         'direction': direction,
       });
@@ -595,8 +636,19 @@ class _AccessButtonsState extends ConsumerState<_AccessButtons> {
       }
     } catch (e) {
       if (mounted) {
+        String msg = 'Error al enviar comando';
+        if (e is DioException) {
+          final data = e.response?.data;
+          if (data is Map) {
+            msg = data['message'] as String? ?? msg;
+          } else if (e.response?.statusCode == 429) {
+            msg = 'Espera unos segundos antes de intentar de nuevo';
+          } else if (e.response?.statusCode == 403) {
+            msg = 'Acceso denegado';
+          }
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().contains('429') ? 'Espera unos segundos' : 'Error al enviar comando'), backgroundColor: context.colors.warning),
+          SnackBar(content: Text(msg), backgroundColor: context.colors.error),
         );
       }
     } finally {
@@ -604,7 +656,7 @@ class _AccessButtonsState extends ConsumerState<_AccessButtons> {
     }
   }
 
-  void _confirm(String label, String direction, String? accessType) {
+  void _confirm(String label, String direction, String? accessType, String? deviceId) {
     showDialog(
       context: context,
       useRootNavigator: true,
@@ -618,7 +670,7 @@ class _AccessButtonsState extends ConsumerState<_AccessButtons> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
           ElevatedButton(
-            onPressed: () { Navigator.pop(ctx); _openGate(direction: direction, accessType: accessType); },
+            onPressed: () { Navigator.pop(ctx); _openGate(direction: direction, accessType: accessType, deviceId: deviceId); },
             child: const Text('Confirmar'),
           ),
         ],
@@ -633,24 +685,24 @@ class _AccessButtonsState extends ConsumerState<_AccessButtons> {
     final isGuard = auth.isGuard;
 
     // Construir lista de botones según flags
-    final List<({String label, String direction, String? accessType, IconData icon})> buttons = [];
+    final List<({String label, String direction, String? accessType, IconData icon, String? deviceId})> buttons = [];
 
     if (config.showResidentAccessButton || isGuard) {
-      buttons.add((label: 'Entrada Residentes', direction: 'ENTRY', accessType: 'RESIDENT', icon: Icons.home_rounded));
+      buttons.add((label: 'Entrada Residentes', direction: 'ENTRY', accessType: 'RESIDENT', icon: Icons.home_rounded, deviceId: config.residentEntryDeviceId));
     }
     if ((config.showResidentAccessButton && config.showExitButton) || isGuard) {
-      buttons.add((label: 'Salida Residentes', direction: 'EXIT', accessType: 'RESIDENT', icon: Icons.logout_rounded));
+      buttons.add((label: 'Salida Residentes', direction: 'EXIT', accessType: 'RESIDENT', icon: Icons.logout_rounded, deviceId: config.residentExitDeviceId));
     }
     if (config.showVisitorAccessButton || isGuard) {
-      buttons.add((label: 'Entrada Visitas', direction: 'ENTRY', accessType: 'VISITOR', icon: Icons.group_rounded));
+      buttons.add((label: 'Entrada Visitas', direction: 'ENTRY', accessType: 'VISITOR', icon: Icons.group_rounded, deviceId: config.visitorEntryDeviceId));
     }
     if ((config.showVisitorAccessButton && config.showExitButton) || isGuard) {
-      buttons.add((label: 'Salida Visitas', direction: 'EXIT', accessType: 'VISITOR', icon: Icons.group_remove_rounded));
+      buttons.add((label: 'Salida Visitas', direction: 'EXIT', accessType: 'VISITOR', icon: Icons.group_remove_rounded, deviceId: config.visitorExitDeviceId));
     }
 
     // Si no hay flags activos y es admin/guard: mostrar botón genérico
     if (buttons.isEmpty && (auth.isAdmin || auth.isGuard)) {
-      buttons.add((label: 'Abrir Acceso', direction: 'ENTRY', accessType: null, icon: Icons.lock_open_rounded));
+      buttons.add((label: 'Abrir Acceso', direction: 'ENTRY', accessType: null, icon: Icons.lock_open_rounded, deviceId: null));
     }
 
     if (buttons.isEmpty) return const SizedBox.shrink();
@@ -663,7 +715,7 @@ class _AccessButtonsState extends ConsumerState<_AccessButtons> {
             icon: btn.icon,
             direction: btn.direction,
             loading: _loading['${btn.direction}-${btn.accessType ?? 'any'}'] == true,
-            onTap: () => _confirm(btn.label, btn.direction, btn.accessType),
+            onTap: () => _confirm(btn.label, btn.direction, btn.accessType, btn.deviceId),
           ),
           const SizedBox(height: 12),
         ],
@@ -848,5 +900,180 @@ class _AccessLogItem extends StatelessWidget {
       case 'EXIT_SENSOR': return 'Sensor de salida';
       default: return method;
     }
+  }
+}
+
+// ── Botón de pánico ────────────────────────────────────────────────────────
+class _PanicButton extends ConsumerStatefulWidget {
+  const _PanicButton();
+
+  @override
+  ConsumerState<_PanicButton> createState() => _PanicButtonState();
+}
+
+class _PanicButtonState extends ConsumerState<_PanicButton> {
+  bool _loading = false;
+  bool _sent = false;
+  int _remainingSeconds = 0;
+  Timer? _timer;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startCooldown(int seconds) {
+    setState(() {
+      _sent = true;
+      _remainingSeconds = seconds;
+    });
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() => _remainingSeconds--);
+      if (_remainingSeconds <= 0) {
+        t.cancel();
+        setState(() { _sent = false; _remainingSeconds = 0; });
+      }
+    });
+  }
+
+  Future<void> _sendPanic() async {
+    // Deshabilitar inmediatamente para prevenir doble tap
+    if (_loading || _sent) return;
+    setState(() => _loading = true);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('⚠️ Botón de pánico'),
+        content: const Text(
+          'Se enviará una alerta urgente a los administradores y guardias del fraccionamiento.\n\n'
+          '¿Confirmar emergencia?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sí, enviar alerta'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+
+    try {
+      final api = ref.read(apiClientProvider);
+      final res = await api.post('/access/panic', data: {});
+      final cooldown = (res.data['data']?['cooldownSeconds'] as num?)?.toInt() ?? 300;
+      _startCooldown(cooldown);
+
+      if (mounted) {
+        // Mostrar popup con datos del usuario y números de emergencia
+        final auth = ref.read(authProvider);
+        final config = ref.read(tenantConfigProvider).valueOrNull;
+        final panicData = {
+          'userName': auth.displayName,
+          'unitLabel': '',
+          'phone': '',
+          'block': '',
+          'unitIdentifier': '',
+        };
+        showGeneralDialog(
+          context: context,
+          barrierDismissible: false,
+          barrierLabel: 'Pánico',
+          barrierColor: Colors.transparent,
+          transitionDuration: const Duration(milliseconds: 300),
+          transitionBuilder: (ctx, a1, a2, child) => FadeTransition(
+            opacity: CurvedAnimation(parent: a1, curve: Curves.easeOut),
+            child: child,
+          ),
+          pageBuilder: (ctx, _, __) => PanicAlertFullScreen(
+            data: panicData,
+            emergencyContacts: config?.emergencyContacts ?? [],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+      final msg = e.toString();
+      final match = RegExp(r'Espera (\d+)').firstMatch(msg);
+      if (match != null) {
+        _startCooldown(int.parse(match.group(1)!));
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(match != null
+                ? 'Ya enviaste una alerta reciente. Espera $_remainingSeconds s.'
+                : 'Error al enviar alerta. Intenta de nuevo.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
+  }
+
+  String _formatTime(int seconds) {
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: _sent
+          ? Container(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.red.withOpacity(0.4)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.red, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Alerta enviada — espera ${_formatTime(_remainingSeconds)}',
+                    style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            )
+          : SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _loading ? null : _sendPanic,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 2,
+                ),
+                icon: _loading
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.crisis_alert_rounded, size: 22),
+                label: Text(
+                  _loading ? 'Enviando alerta...' : 'Botón de pánico',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+    );
   }
 }

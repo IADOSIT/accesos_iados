@@ -47,7 +47,13 @@ async function createWithAdmin(data) {
 
     if (!existingMembership) {
       await tx.userTenant.create({
-        data: { userId: user.id, tenantId: tenant.id, role: 'ADMIN' },
+        data: { userId: user.id, tenantId: tenant.id, role: 'ADMIN', isActive: true },
+      });
+    } else if (!existingMembership.isActive) {
+      // Reactivar membresía inactiva y asegurarse de que sea ADMIN
+      await tx.userTenant.update({
+        where: { userId_tenantId: { userId: user.id, tenantId: tenant.id } },
+        data: { isActive: true, role: 'ADMIN' },
       });
     }
 

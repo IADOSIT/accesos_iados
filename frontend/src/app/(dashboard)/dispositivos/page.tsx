@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { devicesApi } from '@/services/api';
+import { useAuthStore } from '@/stores/auth';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 import Modal from '@/components/ui/Modal';
@@ -9,6 +10,7 @@ import Modal from '@/components/ui/Modal';
 const emptyForm = { name: '', type: 'GATE', accessType: 'GENERAL', mqttTopic: '', location: '' };
 
 export default function DispositivosPage() {
+  const { tenantId } = useAuthStore();
   const [devices, setDevices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -25,7 +27,7 @@ export default function DispositivosPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
