@@ -69,12 +69,18 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
   // Post-submit state
   const [requestId, setRequestId] = useState<string | null>(null);
   const [statusData, setStatusData] = useState<StatusData | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
+    }
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
     }
   }, []);
 
@@ -89,8 +95,8 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
       if (data.status !== 'PENDING') {
         stopPolling();
       }
-      // Also stop if expired
-      if (data.expiresAt && new Date(data.expiresAt) < new Date()) {
+      // Also stop if expired (grace period 30s para evitar falsos positivos)
+      if (data.expiresAt && new Date(data.expiresAt) < new Date(Date.now() - 30000)) {
         setStatusData(d => d ? { ...d, status: 'EXPIRED' } : d);
         stopPolling();
       }
@@ -100,12 +106,20 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
   }, [stopPolling]);
 
   useEffect(() => {
-    if (!requestId) return;
+    if (!requestId || !statusData?.expiresAt) return;
     // Poll immediately then every 5 seconds
     pollStatus(requestId);
     pollingRef.current = setInterval(() => pollStatus(requestId), 5000);
+    // Countdown timer
+    const expiry = new Date(statusData.expiresAt).getTime();
+    const tick = () => {
+      const remaining = Math.max(0, Math.round((expiry - Date.now()) / 1000));
+      setSecondsLeft(remaining);
+    };
+    tick();
+    countdownRef.current = setInterval(tick, 1000);
     return () => stopPolling();
-  }, [requestId, pollStatus, stopPolling]);
+  }, [requestId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -183,7 +197,16 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '150ms' }} />
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '300ms' }} />
           </div>
-          <p className="text-slate-400 text-xs mt-3">Si no hay respuesta, comunícate con el guardia.</p>
+          {secondsLeft !== null && (
+            <p className="text-slate-400 text-xs mt-2">
+              Expira en: <span className={`font-semibold ${secondsLeft < 120 ? 'text-red-400' : 'text-slate-500'}`}>
+                {secondsLeft >= 60
+                  ? `${Math.floor(secondsLeft / 60)}m ${secondsLeft % 60}s`
+                  : `${secondsLeft}s`}
+              </span>
+            </p>
+          )}
+          <p className="text-slate-400 text-xs mt-1">Si no hay respuesta, comunícate con el guardia.</p>
           <div className="mt-5 flex items-center justify-center gap-2 opacity-40">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo3_ia2.png" alt="iaDoS" className="h-5 w-auto" />
@@ -290,8 +313,25 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
         <div className="bg-white rounded-3xl shadow-2xl p-8 text-center max-w-sm w-full">
           <p className="text-6xl mb-4">⏰</p>
           <h2 className="text-slate-800 font-bold text-2xl mb-2">Solicitud expirada</h2>
-          <p className="text-slate-500 text-sm">El tiempo de espera se agotó. Escanea el QR nuevamente para hacer una nueva solicitud.</p>
-          <div className="mt-5 flex items-center justify-center gap-2 opacity-40">
+          <p className="text-slate-500 text-sm mb-5">El tiempo de espera se agotó. Puedes enviar una nueva solicitud.</p>
+          <button
+            onClick={() => {
+              stopPolling();
+              setRequestId(null);
+              setStatusData(null);
+              setSecondsLeft(null);
+              setSelectedService('');
+              setSelectedUnit(null);
+              setVisitorPhone('');
+              setPhotoBase64(null);
+              setPhotoPreview(null);
+              setError('');
+            }}
+            className="w-full py-3 rounded-2xl font-semibold text-white bg-emerald-500 hover:bg-emerald-600 transition-colors mb-4"
+          >
+            Nueva solicitud
+          </button>
+          <div className="flex items-center justify-center gap-2 opacity-40">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo3_ia2.png" alt="iaDoS" className="h-5 w-auto" />
             <span className="text-xs text-slate-500">Acceso Digital · iaDoS</span>

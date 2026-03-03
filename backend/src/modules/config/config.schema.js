@@ -67,6 +67,8 @@ const updateIntegrationSchema = createIntegrationSchema.partial();
 const serviceQrConfigSchema = z.object({
   enabled:            z.boolean().optional(),
   deviceId:           z.string().optional(),
+  exitDeviceId:       z.string().optional(),
+  exitQrValidHours:   z.number().int().min(1).max(24).optional(),
   services:           z.array(z.string()).optional(),
   guardCanApprove:    z.boolean().optional(),
   adminCanApprove:    z.boolean().optional(),

@@ -80,8 +80,10 @@ async function submitRequest(tenantId, qrId, data) {
   const settings = (tenant?.settings && typeof tenant.settings === 'object') ? tenant.settings : {};
   const cfg = (settings.serviceQrConfig && typeof settings.serviceQrConfig === 'object') ? settings.serviceQrConfig : {};
 
-  const ttlMinutes = cfg.requestTtlMinutes || 30;
+  const rawTtl = Number(cfg.requestTtlMinutes);
+  const ttlMinutes = (rawTtl && rawTtl >= 5) ? rawTtl : 30;
   const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+  console.log(`[ServiceQR] submitRequest — cfg.requestTtlMinutes=${cfg.requestTtlMinutes} → ttlMinutes=${ttlMinutes} → expiresAt=${expiresAt.toISOString()}`);
 
   const request = await prisma.serviceRequest.create({
     data: {
@@ -142,6 +144,7 @@ async function getRequestStatus(requestId) {
     },
   });
   if (!request) throw { status: 404, message: 'Solicitud no encontrada' };
+  console.log(`[ServiceQR] getRequestStatus id=${requestId} → status=${request.status} expiresAt=${request.expiresAt?.toISOString()}`);
   return request;
 }
 
@@ -314,13 +317,20 @@ async function rejectRequest(tenantId, requestId, userId, role, notes) {
 // ── Cron: expirar solicitudes vencidas ───────────────────────────────────────
 
 async function expireStaleRequests() {
+  const now = new Date();
+  // Primero obtener IDs para logging (solo si hay algo que expirar)
+  const toExpire = await prisma.serviceRequest.findMany({
+    where: { status: 'PENDING', expiresAt: { lt: now } },
+    select: { id: true, expiresAt: true, createdAt: true },
+  });
+  if (toExpire.length > 0) {
+    console.log(`[ServiceQR-Cron] Expirando ${toExpire.length} solicitud(es) @ ${now.toISOString()}`);
+    toExpire.forEach(r => console.log(`  → id=${r.id} createdAt=${r.createdAt.toISOString()} expiresAt=${r.expiresAt.toISOString()}`));
+  }
   const result = await prisma.serviceRequest.updateMany({
-    where: { status: 'PENDING', expiresAt: { lt: new Date() } },
+    where: { status: 'PENDING', expiresAt: { lt: now } },
     data: { status: 'EXPIRED' },
   });
-  if (result.count > 0) {
-    console.log(`[ServiceQR] ${result.count} solicitud(es) expirada(s)`);
-  }
   return result.count;
 }
 

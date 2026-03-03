@@ -28,11 +28,19 @@ echo  10. Instalar dependencias    (npm install ambos)
 echo  11. Prisma DB push           (sync schema a BD)
 echo  12. Prisma generate          (regenerar cliente)
 echo.
-echo  [ ACCESO EXTERNO - IP: 34.71.132.26 ]
+echo  [ ACCESO EXTERNO - GCP: 34.71.132.26 ]
 echo  13. App Movil - IP externa   (Flutter web apunta a 34.71.132.26:3001)
 echo  14. Abrir puertos - Firewall Windows (3001, 3002, 4000)
 echo  15. Levantar TODO con IP externa (3 ventanas)
 echo  16. Compilar APK Android
+echo.
+echo  [ VPS - PRODUCCION ]
+echo  18. SSH al VPS
+echo  19. Deploy Backend + Frontend al VPS
+echo  20. Build Flutter web + Deploy al VPS
+echo  21. Deploy TODO al VPS (backend + frontend + flutter)
+echo  22. Estado del VPS  (pm2 list)
+echo  23. Logs del VPS    (pm2 logs --lines 80)
 echo.
 echo   0. Salir
 echo.
@@ -56,6 +64,12 @@ if "%OPT%"=="14" goto ABRIR_PUERTOS
 if "%OPT%"=="15" goto TODOS_EXT
 if "%OPT%"=="16" goto BUILD_APK
 if "%OPT%"=="17" goto MOSQUITTO
+if "%OPT%"=="18" goto VPS_SSH
+if "%OPT%"=="19" goto VPS_DEPLOY_WEB
+if "%OPT%"=="20" goto VPS_DEPLOY_FLUTTER
+if "%OPT%"=="21" goto VPS_DEPLOY_ALL
+if "%OPT%"=="22" goto VPS_STATUS
+if "%OPT%"=="23" goto VPS_LOGS
 if "%OPT%"=="0"  goto FIN
 
 echo.
@@ -447,6 +461,217 @@ if "%MOPT%"=="3" (
   pause
   goto MOSQUITTO
 )
+goto MENU
+
+::-----------------------------------------------------------------
+:: ═══════════════════════════════════════════════════════════════
+::  VPS - PRODUCCION
+:: ═══════════════════════════════════════════════════════════════
+
+:VPS_LOAD_CONFIG
+:: Carga la config del VPS (IP, usuario, clave)
+if exist "%~dp0vps\vps.config.bat" (
+  call "%~dp0vps\vps.config.bat"
+) else (
+  echo.
+  echo  [ERROR] No se encontro vps\vps.config.bat
+  echo  Copia vps\vps.config.bat.example y edita con tu IP y usuario.
+  echo.
+  pause
+  goto MENU
+)
+if "%VPS_IP%"=="X.X.X.X" (
+  echo.
+  echo  [ERROR] Edita vps\vps.config.bat con la IP real de tu VPS.
+  echo.
+  pause
+  goto MENU
+)
+:: Armar argumento de clave SSH
+set "SSH_KEY_ARG="
+if not "%VPS_KEY%"=="" set "SSH_KEY_ARG=-i %VPS_KEY%"
+goto :eof
+
+::-----------------------------------------------------------------
+:VPS_SSH
+cls
+echo.
+echo  Conectando al VPS %VPS_IP%...
+echo  (Escribe 'exit' para volver)
+echo.
+call :VPS_LOAD_CONFIG
+ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP%
+echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:VPS_DEPLOY_WEB
+cls
+echo.
+echo  ================================================
+echo   DEPLOY BACKEND + FRONTEND al VPS
+echo  ================================================
+echo.
+call :VPS_LOAD_CONFIG
+echo  VPS: %VPS_USER%@%VPS_IP%  Dir: %VPS_DIR%
+echo.
+
+echo  [1/4] Subiendo backend (src + prisma + package.json)...
+scp %SSH_KEY_ARG% -r "%~dp0backend\src" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/
+scp %SSH_KEY_ARG% -r "%~dp0backend\prisma" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/
+scp %SSH_KEY_ARG% "%~dp0backend\package.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/
+scp %SSH_KEY_ARG% "%~dp0backend\package-lock.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/ 2>nul
+
+echo  [2/4] Subiendo frontend (src + public + config)...
+scp %SSH_KEY_ARG% -r "%~dp0frontend\src" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/
+scp %SSH_KEY_ARG% -r "%~dp0frontend\public" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ 2>nul
+scp %SSH_KEY_ARG% "%~dp0frontend\package.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/
+scp %SSH_KEY_ARG% "%~dp0frontend\package-lock.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ 2>nul
+scp %SSH_KEY_ARG% "%~dp0frontend\next.config.*" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ 2>nul
+scp %SSH_KEY_ARG% "%~dp0frontend\tailwind.config.*" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ 2>nul
+scp %SSH_KEY_ARG% "%~dp0frontend\postcss.config.*" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ 2>nul
+scp %SSH_KEY_ARG% "%~dp0frontend\tsconfig.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ 2>nul
+
+echo  [3/4] Subiendo scripts del VPS...
+scp %SSH_KEY_ARG% "%~dp0vps\ecosystem.config.js" %VPS_USER%@%VPS_IP%:%VPS_DIR%/
+scp %SSH_KEY_ARG% "%~dp0vps\deploy-server.sh" %VPS_USER%@%VPS_IP%:%VPS_DIR%/
+ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "chmod +x %VPS_DIR%/deploy-server.sh"
+
+echo  [4/4] Instalando deps + build + reiniciando PM2 en VPS...
+ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/deploy-server.sh"
+
+echo.
+echo  [OK] Deploy completado.
+echo   Backend   -^> http://%VPS_IP%:3001/api/health
+echo   Frontend  -^> http://%VPS_IP%:3002
+echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:VPS_DEPLOY_FLUTTER
+cls
+echo.
+echo  ================================================
+echo   BUILD FLUTTER WEB + DEPLOY al VPS
+echo  ================================================
+echo.
+call :VPS_LOAD_CONFIG
+echo  VPS IP: %VPS_IP%
+echo.
+
+echo  [1/3] Compilando Flutter web para VPS...
+cd /d "%~dp0mobile"
+C:\flutter\bin\flutter.bat build web --release ^
+  --dart-define=API_URL=http://%VPS_IP%:3001/api ^
+  --dart-define=PORTAL_URL=http://%VPS_IP%:3002
+if %ERRORLEVEL% NEQ 0 (
+  echo  ERROR: Fallo la compilacion de Flutter.
+  cd /d "%~dp0"
+  pause
+  goto MENU
+)
+
+echo  [2/3] Subiendo build/web al VPS...
+scp %SSH_KEY_ARG% -r "build\web\." %VPS_USER%@%VPS_IP%:%VPS_DIR%/flutter-web/
+
+echo  [3/3] Reiniciando iados-flutter en PM2...
+ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "pm2 list | grep -q iados-flutter && pm2 restart iados-flutter || pm2 start %VPS_DIR%/ecosystem.config.js --only iados-flutter && pm2 save --force"
+
+cd /d "%~dp0"
+echo.
+echo  [OK] Flutter web desplegado.
+echo   App Movil -^> http://%VPS_IP%:4000
+echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:VPS_DEPLOY_ALL
+cls
+echo.
+echo  ================================================
+echo   DEPLOY COMPLETO al VPS (Backend+Frontend+Flutter)
+echo  ================================================
+echo.
+call :VPS_LOAD_CONFIG
+echo  Esto ejecutara las opciones 19 y 20 en secuencia.
+echo.
+set "CONFIRM="
+set /p CONFIRM="  Confirmar deploy completo? (s/n): "
+if /i not "%CONFIRM%"=="s" goto MENU
+
+call :VPS_DEPLOY_WEB_INLINE
+call :VPS_DEPLOY_FLUTTER_INLINE
+
+echo.
+echo  [OK] Deploy completo terminado.
+echo   Backend   -^> http://%VPS_IP%:3001/api/health
+echo   Frontend  -^> http://%VPS_IP%:3002
+echo   App Movil -^> http://%VPS_IP%:4000
+echo.
+pause
+goto MENU
+
+:VPS_DEPLOY_WEB_INLINE
+echo  [Backend/Frontend] Subiendo archivos...
+scp %SSH_KEY_ARG% -r "%~dp0backend\src" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/ >nul
+scp %SSH_KEY_ARG% -r "%~dp0backend\prisma" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/ >nul
+scp %SSH_KEY_ARG% "%~dp0backend\package.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/ >nul
+scp %SSH_KEY_ARG% -r "%~dp0frontend\src" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ >nul
+scp %SSH_KEY_ARG% -r "%~dp0frontend\public" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ >nul 2>nul
+scp %SSH_KEY_ARG% "%~dp0frontend\package.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ >nul
+scp %SSH_KEY_ARG% "%~dp0frontend\next.config.*" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ >nul 2>nul
+scp %SSH_KEY_ARG% "%~dp0frontend\tailwind.config.*" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ >nul 2>nul
+scp %SSH_KEY_ARG% "%~dp0frontend\tsconfig.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ >nul 2>nul
+scp %SSH_KEY_ARG% "%~dp0vps\ecosystem.config.js" %VPS_USER%@%VPS_IP%:%VPS_DIR%/ >nul
+scp %SSH_KEY_ARG% "%~dp0vps\deploy-server.sh" %VPS_USER%@%VPS_IP%:%VPS_DIR%/ >nul
+ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "chmod +x %VPS_DIR%/deploy-server.sh" >nul
+echo  [Backend/Frontend] Instalando + reiniciando...
+ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/deploy-server.sh"
+goto :eof
+
+:VPS_DEPLOY_FLUTTER_INLINE
+echo  [Flutter] Compilando...
+cd /d "%~dp0mobile"
+C:\flutter\bin\flutter.bat build web --release --dart-define=API_URL=http://%VPS_IP%:3001/api --dart-define=PORTAL_URL=http://%VPS_IP%:3002
+echo  [Flutter] Subiendo...
+scp %SSH_KEY_ARG% -r "build\web\." %VPS_USER%@%VPS_IP%:%VPS_DIR%/flutter-web/ >nul
+ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "pm2 list | grep -q iados-flutter && pm2 restart iados-flutter || pm2 start %VPS_DIR%/ecosystem.config.js --only iados-flutter && pm2 save --force >/dev/null 2>&1"
+cd /d "%~dp0"
+goto :eof
+
+::-----------------------------------------------------------------
+:VPS_STATUS
+cls
+echo.
+echo  ================================================
+echo   ESTADO DEL VPS
+echo  ================================================
+echo.
+call :VPS_LOAD_CONFIG
+echo  Conectando a %VPS_USER%@%VPS_IP%...
+echo.
+ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "pm2 list && echo '' && echo '--- Memoria ---' && free -h && echo '' && echo '--- Disco ---' && df -h / && echo '' && echo '--- Mosquitto ---' && systemctl is-active mosquitto && echo '  MQTT activo en puerto 1883'"
+echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:VPS_LOGS
+cls
+echo.
+echo  ================================================
+echo   LOGS DEL VPS (ultimas 80 lineas)
+echo  ================================================
+echo.
+call :VPS_LOAD_CONFIG
+echo  Mostrando logs... (CTRL+C para salir)
+echo.
+ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "pm2 logs --lines 80 --nostream"
+echo.
+pause
 goto MENU
 
 ::-----------------------------------------------------------------

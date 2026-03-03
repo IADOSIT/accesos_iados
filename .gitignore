@@ -4,3 +4,7 @@
 # OS
 .DS_Store
 Thumbs.db
+
+# VPS config local (contiene IP, usuario y credenciales — no subir al repo)
+vps/vps.config.bat
+vps/backend.env.production
