@@ -40,7 +40,11 @@
       "Bash(grep:*)",
       "Bash(identify:*)",
       "Bash(do echo:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(GIT_TRACE=1 git add:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(sshpass:*)",
+      "Bash(ssh:*)"
     ]
   }
 }

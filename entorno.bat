@@ -128,21 +128,15 @@ goto MENU
 :TODOS
 cls
 echo.
-echo  Iniciando Backend en ventana separada...
+echo  Iniciando servicios en ventanas separadas...
 start "iaDoS Backend :3001" cmd /k "cd /d %~dp0backend && node src/index.js"
-timeout /t 3 /nobreak >nul
-echo  Iniciando Frontend en ventana separada...
 start "iaDoS Frontend :3002" cmd /k "cd /d %~dp0frontend && npm run dev"
-timeout /t 3 /nobreak >nul
-echo  Iniciando App Movil en ventana separada...
 start "iaDoS App Movil :4000" cmd /k "cd /d %~dp0mobile && C:\flutter\bin\flutter.bat run -d web-server --web-port 4000 --web-hostname 0.0.0.0"
 echo.
-echo  Todos los servicios iniciados:
 echo   Backend   -^> http://localhost:3001/api/health
 echo   Frontend  -^> http://localhost:3002
 echo   App Movil -^> http://localhost:4000
 echo.
-pause
 goto MENU
 
 ::-----------------------------------------------------------------
@@ -325,20 +319,15 @@ goto MENU
 :TODOS_EXT
 cls
 echo.
-echo  Iniciando TODOS los servicios con IP externa...
-echo.
+echo  Iniciando servicios con IP externa en ventanas separadas...
 start "iaDoS Backend :3001" cmd /k "cd /d %~dp0backend && node src/index.js"
-timeout /t 3 /nobreak >nul
 start "iaDoS Frontend :3002 [EXT]" cmd /k "set NEXT_PUBLIC_API_URL=http://34.71.132.26:3001/api&& cd /d %~dp0frontend && npm run dev"
-timeout /t 3 /nobreak >nul
 start "iaDoS App Movil :4000 [EXT]" cmd /k "cd /d %~dp0mobile && C:\flutter\bin\flutter.bat run -d web-server --web-port 4000 --web-hostname 0.0.0.0 --dart-define=API_URL=http://34.71.132.26:3001/api --dart-define=PORTAL_URL=http://34.71.132.26:3002"
 echo.
-echo  Servicios iniciados (acceso externo):
 echo   Backend   -^> http://34.71.132.26:3001/api/health
 echo   Frontend  -^> http://34.71.132.26:3002
 echo   App Movil -^> http://34.71.132.26:4000
 echo.
-pause
 goto MENU
 
 ::-----------------------------------------------------------------
@@ -385,34 +374,20 @@ netsh advfirewall firewall add rule name="iados-3001" dir=in action=allow protoc
 netsh advfirewall firewall add rule name="iados-3002" dir=in action=allow protocol=TCP localport=3002
 netsh advfirewall firewall add rule name="iados-4000" dir=in action=allow protocol=TCP localport=4000
 echo.
-echo  [OK] Puertos abiertos en Windows Firewall: 3001, 3002, 4000
+echo  [OK] Puertos 3001, 3002, 4000 abiertos en Firewall de Windows.
 echo.
 echo  -------------------------------------------------------
-echo  Ahora abre estas reglas en GCP (Firewall de la VM):
+echo  Firewall del VPS IONOS (74.208.149.7):
 echo  -------------------------------------------------------
 echo.
-echo  Ve a: GCP Console ^> VPC Network ^> Firewall
-echo  Crea 3 reglas Ingress con estos datos:
+echo  El VPS ya tiene ufw configurado con puertos abiertos.
+echo  Si necesitas verificar, usa opcion 18 (SSH al VPS) y ejecuta:
+echo    ufw status
 echo.
-echo  Nombre:          iados-backend
-echo  Direccion:       Ingress
-echo  Accion:          Allow
-echo  Targets:         All instances in network
-echo  Source IP:       0.0.0.0/0
-echo  Protocolos:      TCP
-echo  Puertos:         3001
-echo.
-echo  Nombre:          iados-frontend
-echo  Puertos:         3002
-echo.
-echo  Nombre:          iados-movil
-echo  Puertos:         4000
-echo.
-echo  -------------------------------------------------------
-echo  URLs de acceso desde fuera:
-echo   Backend API  -^> http://34.71.132.26:3001/api/health
-echo   Frontend     -^> http://34.71.132.26:3002
-echo   App Movil    -^> http://34.71.132.26:4000
+echo  URLs de acceso:
+echo   Backend API  -^> http://74.208.149.7:3001/api/health
+echo   Frontend     -^> http://74.208.149.7:3002
+echo   App Movil    -^> http://74.208.149.7:4000
 echo  -------------------------------------------------------
 echo.
 pause
@@ -468,18 +443,28 @@ if "%MOPT%"=="3" (
 goto MENU
 
 ::-----------------------------------------------------------------
-:: ═══════════════════════════════════════════════════════════════
 ::  VPS - PRODUCCION
-:: ═══════════════════════════════════════════════════════════════
+::-----------------------------------------------------------------
 
 :VPS_LOAD_CONFIG
+:: Verificar que ssh este instalado
+where ssh >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+  echo.
+  echo  [ERROR] El cliente SSH no esta instalado o no esta en PATH.
+  echo.
+  echo  Para instalarlo, abre PowerShell como Administrador y ejecuta:
+  echo    dism /online /Add-Capability /CapabilityName:OpenSSH.Client~~~~0.0.1.0
+  echo.
+  pause
+  goto MENU
+)
 :: Carga la config del VPS (IP, usuario, clave)
 if exist "%~dp0vps\vps.config.bat" (
   call "%~dp0vps\vps.config.bat"
 ) else (
   echo.
   echo  [ERROR] No se encontro vps\vps.config.bat
-  echo  Copia vps\vps.config.bat.example y edita con tu IP y usuario.
   echo.
   pause
   goto MENU
@@ -491,20 +476,21 @@ if "%VPS_IP%"=="X.X.X.X" (
   pause
   goto MENU
 )
-:: Armar argumento de clave SSH
+:: Armar argumentos SSH
 set "SSH_KEY_ARG="
 if not "%VPS_KEY%"=="" set "SSH_KEY_ARG=-i %VPS_KEY%"
+set "SSH_OPTS=-o StrictHostKeyChecking=no -o ConnectTimeout=15"
 goto :eof
 
 ::-----------------------------------------------------------------
 :VPS_SSH
 cls
+call :VPS_LOAD_CONFIG
 echo.
-echo  Conectando al VPS %VPS_IP%...
+echo  Conectando al VPS %VPS_USER%@%VPS_IP%...
 echo  (Escribe 'exit' para volver)
 echo.
-call :VPS_LOAD_CONFIG
-ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP%
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP%
 echo.
 pause
 goto MENU
@@ -529,7 +515,7 @@ if /i not "%CONFIRM%"=="s" goto MENU
 
 echo.
 echo  Ejecutando en VPS: git pull + npm install + build + pm2 restart...
-ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-server.sh"
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-server.sh"
 
 echo.
 echo  [OK] Deploy completado.
@@ -565,10 +551,10 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  [2/3] Subiendo build/web al VPS...
-scp %SSH_KEY_ARG% -r "build\web\." %VPS_USER%@%VPS_IP%:%VPS_DIR%/flutter-web/
+scp %SSH_KEY_ARG% %SSH_OPTS% -r "build\web\." %VPS_USER%@%VPS_IP%:%VPS_DIR%/flutter-web/
 
 echo  [3/3] Reiniciando iados-flutter en PM2...
-ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-flutter.sh"
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-flutter.sh"
 
 cd /d "%~dp0"
 echo.
@@ -596,11 +582,11 @@ set /p CONFIRM="  Confirmar deploy completo? (s/n): "
 if /i not "%CONFIRM%"=="s" goto MENU
 
 echo.
-echo  ── Fase 1: Backend + Frontend (git pull en VPS)...
-ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-server.sh"
+echo  [1] Backend + Frontend (git pull en VPS)...
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-server.sh"
 
 echo.
-echo  ── Fase 2: Flutter web (build local + scp)...
+echo  [2] Flutter web (build local + scp)...
 cd /d "%~dp0mobile"
 C:\flutter\bin\flutter.bat build web --release ^
   --dart-define=API_URL=http://%VPS_IP%:3001/api ^
@@ -611,8 +597,8 @@ if %ERRORLEVEL% NEQ 0 (
   pause
   goto MENU
 )
-scp %SSH_KEY_ARG% -r "build\web\." %VPS_USER%@%VPS_IP%:%VPS_DIR%/flutter-web/
-ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-flutter.sh"
+scp %SSH_KEY_ARG% %SSH_OPTS% -r "build\web\." %VPS_USER%@%VPS_IP%:%VPS_DIR%/flutter-web/
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-flutter.sh"
 cd /d "%~dp0"
 
 echo.
@@ -635,7 +621,7 @@ echo.
 call :VPS_LOAD_CONFIG
 echo  Conectando a %VPS_USER%@%VPS_IP%...
 echo.
-ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "pm2 list && echo '' && echo '--- Memoria ---' && free -h && echo '' && echo '--- Disco ---' && df -h / && echo '' && echo '--- Mosquitto ---' && systemctl is-active mosquitto && echo '  MQTT activo en puerto 1883'"
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "pm2 list && echo && echo '--- Memoria ---' && free -h && echo && echo '--- Disco ---' && df -h / && echo && echo '--- Mosquitto ---' && systemctl is-active mosquitto 2>/dev/null || echo INACTIVO"
 echo.
 pause
 goto MENU
@@ -651,7 +637,7 @@ echo.
 call :VPS_LOAD_CONFIG
 echo  Mostrando logs... (CTRL+C para salir)
 echo.
-ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "pm2 logs --lines 80 --nostream"
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "pm2 logs --lines 80 --nostream"
 echo.
 pause
 goto MENU
@@ -661,12 +647,12 @@ goto MENU
 cls
 echo.
 echo  ================================================
-echo   COMPILAR APK ANDROID  →  VPS (74.208.149.7)
+echo   COMPILAR APK ANDROID  --^>  VPS (74.208.149.7)
 echo  ================================================
 echo.
 call :VPS_LOAD_CONFIG
 
-:: Leer versión actual
+:: Leer version actual
 set "CURRENT_VER="
 set /p CURRENT_VER=<"%~dp0VERSION"
 echo  Version actual: %CURRENT_VER%
