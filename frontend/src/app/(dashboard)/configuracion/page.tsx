@@ -62,6 +62,8 @@ const EMPTY_EMERGENCY: EmergencyNumber = { instance: '', number: '' };
 interface ServiceQrConfig {
   enabled: boolean;
   deviceId: string;
+  exitDeviceId: string;
+  exitQrValidHours: number;
   services: string[];
   guardCanApprove: boolean;
   adminCanApprove: boolean;
@@ -75,6 +77,8 @@ interface ServiceQrConfig {
 const DEFAULT_SVC_QR: ServiceQrConfig = {
   enabled: false,
   deviceId: '',
+  exitDeviceId: '',
+  exitQrValidHours: 4,
   services: ['CFE', 'Gas', 'Agua', 'Basura', 'Paquetería', 'Mensajería', 'Otro'],
   guardCanApprove: true,
   adminCanApprove: true,
@@ -1346,9 +1350,9 @@ export default function ConfiguracionPage() {
                   </div>
                 </div>
 
-                {/* Dispositivo */}
+                {/* Dispositivo entrada */}
                 <div>
-                  <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Dispositivo de acceso</h4>
+                  <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Dispositivo de entrada</h4>
                   <select
                     className="input-field text-sm w-full"
                     value={svcQrCfg.deviceId}
@@ -1360,6 +1364,33 @@ export default function ConfiguracionPage() {
                     ))}
                   </select>
                   <p className="text-xs text-slate-400 mt-1">Se activa automáticamente cuando el residente aprueba</p>
+                </div>
+
+                {/* Dispositivo salida + QR de salida */}
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Dispositivo de salida (QR salida)</h4>
+                  <select
+                    className="input-field text-sm w-full"
+                    value={svcQrCfg.exitDeviceId}
+                    onChange={e => setSvcQrCfg(c => ({ ...c, exitDeviceId: e.target.value }))}
+                  >
+                    <option value="">— Sin QR de salida —</option>
+                    {devices.map(d => (
+                      <option key={d.id} value={d.id}>{d.name}{d.status === 'OFFLINE' ? ' (Offline)' : ''}</option>
+                    ))}
+                  </select>
+                  {svcQrCfg.exitDeviceId && (
+                    <div className="mt-2">
+                      <label className="block text-xs text-slate-500 mb-1">
+                        Vigencia QR salida: <span className="font-bold text-slate-700">{svcQrCfg.exitQrValidHours} h</span>
+                      </label>
+                      <input type="range" min={1} max={24} step={1} value={svcQrCfg.exitQrValidHours}
+                        onChange={e => setSvcQrCfg(c => ({ ...c, exitQrValidHours: Number(e.target.value) }))}
+                        className="w-full accent-emerald-500" />
+                      <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>1 h</span><span>24 h</span></div>
+                    </div>
+                  )}
+                  <p className="text-xs text-slate-400 mt-1">Si se configura, el visitante recibe un QR de salida al ser aprobado</p>
                 </div>
 
                 {/* Tiempos */}
@@ -1374,13 +1405,33 @@ export default function ConfiguracionPage() {
                     <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>5 min</span><span>2 h</span></div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Rotar QR: cada <span className="font-bold">{svcQrCfg.rotateDays} días</span>
+                    {svcQrCfg.rotateDays === 0 ? (
+                      <>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          QR de entrada: <span className="font-bold text-emerald-600">Permanente</span>
+                        </label>
+                        <p className="text-xs text-slate-400">El QR nunca cambia</p>
+                      </>
+                    ) : (
+                      <>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Rotar QR: cada <span className="font-bold">{svcQrCfg.rotateDays} días</span>
+                        </label>
+                        <input type="range" min={1} max={30} value={svcQrCfg.rotateDays}
+                          onChange={e => setSvcQrCfg(c => ({ ...c, rotateDays: Number(e.target.value) }))}
+                          className="w-full accent-emerald-500" />
+                        <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>1 día</span><span>30 días</span></div>
+                      </>
+                    )}
+                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                      <div
+                        className={`relative w-9 h-5 rounded-full transition-colors ${svcQrCfg.rotateDays === 0 ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                        onClick={() => setSvcQrCfg(c => ({ ...c, rotateDays: c.rotateDays === 0 ? 7 : 0 }))}
+                      >
+                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${svcQrCfg.rotateDays === 0 ? 'translate-x-4' : ''}`} />
+                      </div>
+                      <span className="text-xs text-slate-500">QR permanente</span>
                     </label>
-                    <input type="range" min={1} max={30} value={svcQrCfg.rotateDays}
-                      onChange={e => setSvcQrCfg(c => ({ ...c, rotateDays: Number(e.target.value) }))}
-                      className="w-full accent-emerald-500" />
-                    <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>1 día</span><span>30 días</span></div>
                   </div>
                 </div>
               </div>

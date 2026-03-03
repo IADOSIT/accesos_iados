@@ -13,6 +13,15 @@ async function getPublicInfo(req, res) {
   }
 }
 
+async function getRequestStatus(req, res) {
+  try {
+    const result = await svc.getRequestStatus(req.params.requestId);
+    return success(res, result);
+  } catch (err) {
+    return error(res, err.message, err.status || 500);
+  }
+}
+
 async function submitRequest(req, res) {
   try {
     const { tenantId, qrId, service, unitId, photoData, visitorPhone } = req.body;
@@ -89,6 +98,7 @@ async function rejectRequest(req, res) {
 
 module.exports = {
   getPublicInfo,
+  getRequestStatus,
   submitRequest,
   getCurrentQR,
   regenerateQR,

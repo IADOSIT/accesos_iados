@@ -14,8 +14,9 @@ const publicLimiter = rateLimit({
 });
 
 // ── Rutas públicas (sin auth ni tenant header) ────────────────────────────────
-router.get('/public/:code',    publicLimiter, ctrl.getPublicInfo);
-router.post('/public/request', publicLimiter, ctrl.submitRequest);
+router.get('/public/:code',                    publicLimiter, ctrl.getPublicInfo);
+router.post('/public/request',                 publicLimiter, ctrl.submitRequest);
+router.get('/public/request-status/:requestId', publicLimiter, ctrl.getRequestStatus);
 
 // ── Rutas autenticadas ────────────────────────────────────────────────────────
 router.use(authenticate, validateTenant);

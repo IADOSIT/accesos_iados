@@ -446,9 +446,11 @@ model ServiceRequest {
   status       ServiceRequestStatus @default(PENDING)
   approvedById String?
   approvedAt   DateTime?
-  deviceId     String?
-  notes        String?
-  expiresAt    DateTime
+  deviceId        String?
+  notes           String?
+  expiresAt       DateTime
+  exitQrCode      String?
+  exitQrExpiresAt DateTime?
 
   tenant Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   qr     ServiceQR @relation(fields: [qrId], references: [id], onDelete: Cascade)

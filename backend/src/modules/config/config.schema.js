@@ -74,7 +74,7 @@ const serviceQrConfigSchema = z.object({
   requireUnit:        z.boolean().optional(),
   requirePhoto:       z.boolean().optional(),
   requestTtlMinutes:  z.number().int().min(5).max(120).optional(),
-  rotateDays:         z.number().int().min(1).max(30).optional(),
+  rotateDays:         z.number().int().min(0).max(30).optional(),
 }).optional();
 
 // ── Feature flags ─────────────────────────────────────────────────

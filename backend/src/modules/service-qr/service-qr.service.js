@@ -129,6 +129,22 @@ async function submitRequest(tenantId, qrId, data) {
   return { id: request.id, expiresAt, service, unitLabel };
 }
 
+// ── Estado público de solicitud (para polling del visitante) ─────────────────
+
+async function getRequestStatus(requestId) {
+  const request = await prisma.serviceRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      status: true,
+      expiresAt: true,
+      exitQrCode: true,
+      exitQrExpiresAt: true,
+    },
+  });
+  if (!request) throw { status: 404, message: 'Solicitud no encontrada' };
+  return request;
+}
+
 // ── Listar solicitudes (autenticado) ────────────────────────────────────────
 
 async function listRequests(tenantId, userId, role, { skip, limit, status }) {
@@ -241,6 +257,17 @@ async function approveRequest(tenantId, requestId, userId, role) {
     }
   }
 
+  // Generar QR de salida si hay dispositivo de salida configurado
+  const exitDeviceId = cfg.exitDeviceId || null;
+  const exitQrValidHours = cfg.exitQrValidHours || 4;
+  let exitQrCode = null;
+  let exitQrExpiresAt = null;
+
+  if (exitDeviceId) {
+    exitQrCode = `SEXIT-${uuidv4().replace(/-/g, '').substring(0, 10).toUpperCase()}`;
+    exitQrExpiresAt = new Date(Date.now() + exitQrValidHours * 60 * 60 * 1000);
+  }
+
   const updated = await prisma.serviceRequest.update({
     where: { id: requestId },
     data: {
@@ -248,6 +275,8 @@ async function approveRequest(tenantId, requestId, userId, role) {
       approvedById: userId,
       approvedAt: new Date(),
       deviceId: deviceId || null,
+      exitQrCode: exitQrCode || null,
+      exitQrExpiresAt: exitQrExpiresAt || null,
     },
     include: { unit: { select: { identifier: true } } },
   });
@@ -308,12 +337,16 @@ async function rotateExpiredQRs() {
   for (const qr of tenants) {
     const settings = (qr.tenant.settings && typeof qr.tenant.settings === 'object') ? qr.tenant.settings : {};
     const cfg = (settings.serviceQrConfig && typeof settings.serviceQrConfig === 'object') ? settings.serviceQrConfig : {};
-    const rotateDays = cfg.rotateDays || 7;
+    const rotateDays = cfg.rotateDays;
 
+    // rotateDays === 0 → QR permanente, nunca rotar
+    if (rotateDays === 0) continue;
+
+    const days = (rotateDays && rotateDays > 0) ? rotateDays : 7;
     const ageMs = Date.now() - new Date(qr.updatedAt).getTime();
     const ageDays = ageMs / (24 * 60 * 60 * 1000);
 
-    if (ageDays >= rotateDays) {
+    if (ageDays >= days) {
       await prisma.serviceQR.update({ where: { id: qr.id }, data: { code: uuidv4() } });
       rotated++;
     }
@@ -327,6 +360,7 @@ module.exports = {
   getOrCreateQR,
   rotateQR,
   getPublicInfo,
+  getRequestStatus,
   submitRequest,
   listRequests,
   getRequest,
