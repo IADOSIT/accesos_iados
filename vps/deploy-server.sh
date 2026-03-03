@@ -1,37 +1,52 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════
-#  iaDoS — Script de deploy (se ejecuta EN el VPS via SSH)
-#  Llamado automáticamente por entorno.bat opción 19
+#  iaDoS — Deploy script (se ejecuta EN el VPS via SSH)
+#  Llamado automáticamente desde entorno.bat opciones 19 / 21
 # ═══════════════════════════════════════════════════════════════════
 set -e
-
 VPS_DIR="/opt/iados"
+
 echo ""
-echo "[deploy] Instalando dependencias del backend..."
+echo "── iaDoS Deploy ────────────────────────────────────────"
+
+# ── 1. Git pull ───────────────────────────────────────────────────
+echo "[1/4] Actualizando código desde GitHub..."
+cd "$VPS_DIR"
+git pull --quiet
+VERSION=$(cat VERSION 2>/dev/null || echo "?")
+echo "  Versión: $VERSION"
+
+# ── 2. Backend ────────────────────────────────────────────────────
+echo "[2/4] Backend — npm install + prisma generate..."
 cd "$VPS_DIR/backend"
 npm install --omit=dev --quiet
 npx prisma generate --quiet
 
-echo "[deploy] Build del frontend..."
+# ── 3. Frontend ───────────────────────────────────────────────────
+echo "[3/4] Frontend — npm install + next build..."
 cd "$VPS_DIR/frontend"
 npm install --quiet
 npm run build
 
-echo "[deploy] Reiniciando servicios con PM2..."
+# ── 4. PM2 restart ───────────────────────────────────────────────
+echo "[4/4] Reiniciando servicios..."
+cd "$VPS_DIR"
+
 if pm2 list | grep -q "iados-backend"; then
-  pm2 restart iados-backend --update-env
+  pm2 restart iados-backend --update-env --silent
 else
-  pm2 start "$VPS_DIR/ecosystem.config.js" --only iados-backend
+  pm2 start "$VPS_DIR/vps/ecosystem.config.js" --only iados-backend --silent
 fi
 
 if pm2 list | grep -q "iados-frontend"; then
-  pm2 restart iados-frontend --update-env
+  pm2 restart iados-frontend --update-env --silent
 else
-  pm2 start "$VPS_DIR/ecosystem.config.js" --only iados-frontend
+  pm2 start "$VPS_DIR/vps/ecosystem.config.js" --only iados-frontend --silent
 fi
 
 pm2 save --force >/dev/null 2>&1
 
 echo ""
-echo "[deploy] ✓ Backend y Frontend actualizados."
-pm2 list --no-color
+echo "── Deploy completado ──────────────────────────────────"
+pm2 list --no-color | grep -E "iados-|name"
+echo ""

@@ -34,13 +34,15 @@ echo  14. Abrir puertos - Firewall Windows (3001, 3002, 4000)
 echo  15. Levantar TODO con IP externa (3 ventanas)
 echo  16. Compilar APK Android
 echo.
-echo  [ VPS - PRODUCCION ]
+echo  [ VPS - PRODUCCION  74.208.149.7 ]
 echo  18. SSH al VPS
-echo  19. Deploy Backend + Frontend al VPS
-echo  20. Build Flutter web + Deploy al VPS
-echo  21. Deploy TODO al VPS (backend + frontend + flutter)
-echo  22. Estado del VPS  (pm2 list)
-echo  23. Logs del VPS    (pm2 logs --lines 80)
+echo  19. Deploy Backend + Frontend   (git pull + npm + pm2 restart)
+echo  20. Build Flutter web + Deploy  (build local + scp + pm2 restart)
+echo  21. Deploy TODO                 (19 + 20 completo)
+echo  22. Estado del VPS              (pm2 list + ram + disco)
+echo  23. Logs del VPS                (pm2 logs ultimas 80 lineas)
+echo  24. Compilar APK para VPS       (pide nombre, apunta a VPS)
+echo  25. Nueva version               (bump VERSION + git tag + push)
 echo.
 echo   0. Salir
 echo.
@@ -70,6 +72,8 @@ if "%OPT%"=="20" goto VPS_DEPLOY_FLUTTER
 if "%OPT%"=="21" goto VPS_DEPLOY_ALL
 if "%OPT%"=="22" goto VPS_STATUS
 if "%OPT%"=="23" goto VPS_LOGS
+if "%OPT%"=="24" goto BUILD_APK_VPS
+if "%OPT%"=="25" goto VERSION_BUMP
 if "%OPT%"=="0"  goto FIN
 
 echo.
@@ -510,36 +514,22 @@ goto MENU
 cls
 echo.
 echo  ================================================
-echo   DEPLOY BACKEND + FRONTEND al VPS
+echo   DEPLOY BACKEND + FRONTEND al VPS  (via GitHub)
 echo  ================================================
 echo.
 call :VPS_LOAD_CONFIG
-echo  VPS: %VPS_USER%@%VPS_IP%  Dir: %VPS_DIR%
+echo  VPS: %VPS_USER%@%VPS_IP%
 echo.
+echo  PREREQUISITO: tus cambios deben estar en GitHub
+echo  (git add + git commit + git push antes de esto)
+echo.
+set "CONFIRM="
+set /p CONFIRM="  Confirmar deploy? (s/n): "
+if /i not "%CONFIRM%"=="s" goto MENU
 
-echo  [1/4] Subiendo backend (src + prisma + package.json)...
-scp %SSH_KEY_ARG% -r "%~dp0backend\src" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/
-scp %SSH_KEY_ARG% -r "%~dp0backend\prisma" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/
-scp %SSH_KEY_ARG% "%~dp0backend\package.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/
-scp %SSH_KEY_ARG% "%~dp0backend\package-lock.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/ 2>nul
-
-echo  [2/4] Subiendo frontend (src + public + config)...
-scp %SSH_KEY_ARG% -r "%~dp0frontend\src" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/
-scp %SSH_KEY_ARG% -r "%~dp0frontend\public" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ 2>nul
-scp %SSH_KEY_ARG% "%~dp0frontend\package.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/
-scp %SSH_KEY_ARG% "%~dp0frontend\package-lock.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ 2>nul
-scp %SSH_KEY_ARG% "%~dp0frontend\next.config.*" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ 2>nul
-scp %SSH_KEY_ARG% "%~dp0frontend\tailwind.config.*" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ 2>nul
-scp %SSH_KEY_ARG% "%~dp0frontend\postcss.config.*" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ 2>nul
-scp %SSH_KEY_ARG% "%~dp0frontend\tsconfig.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ 2>nul
-
-echo  [3/4] Subiendo scripts del VPS...
-scp %SSH_KEY_ARG% "%~dp0vps\ecosystem.config.js" %VPS_USER%@%VPS_IP%:%VPS_DIR%/
-scp %SSH_KEY_ARG% "%~dp0vps\deploy-server.sh" %VPS_USER%@%VPS_IP%:%VPS_DIR%/
-ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "chmod +x %VPS_DIR%/deploy-server.sh"
-
-echo  [4/4] Instalando deps + build + reiniciando PM2 en VPS...
-ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/deploy-server.sh"
+echo.
+echo  Ejecutando en VPS: git pull + npm install + build + pm2 restart...
+ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-server.sh"
 
 echo.
 echo  [OK] Deploy completado.
@@ -567,6 +557,7 @@ C:\flutter\bin\flutter.bat build web --release ^
   --dart-define=API_URL=http://%VPS_IP%:3001/api ^
   --dart-define=PORTAL_URL=http://%VPS_IP%:3002
 if %ERRORLEVEL% NEQ 0 (
+  echo.
   echo  ERROR: Fallo la compilacion de Flutter.
   cd /d "%~dp0"
   pause
@@ -577,7 +568,7 @@ echo  [2/3] Subiendo build/web al VPS...
 scp %SSH_KEY_ARG% -r "build\web\." %VPS_USER%@%VPS_IP%:%VPS_DIR%/flutter-web/
 
 echo  [3/3] Reiniciando iados-flutter en PM2...
-ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "pm2 list | grep -q iados-flutter && pm2 restart iados-flutter || pm2 start %VPS_DIR%/ecosystem.config.js --only iados-flutter && pm2 save --force"
+ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-flutter.sh"
 
 cd /d "%~dp0"
 echo.
@@ -592,18 +583,37 @@ goto MENU
 cls
 echo.
 echo  ================================================
-echo   DEPLOY COMPLETO al VPS (Backend+Frontend+Flutter)
+echo   DEPLOY COMPLETO al VPS
+echo   Backend + Frontend (GitHub) + Flutter web
 echo  ================================================
 echo.
 call :VPS_LOAD_CONFIG
-echo  Esto ejecutara las opciones 19 y 20 en secuencia.
+echo  PREREQUISITO: tus cambios deben estar en GitHub
+echo  (git add + git commit + git push antes de esto)
 echo.
 set "CONFIRM="
 set /p CONFIRM="  Confirmar deploy completo? (s/n): "
 if /i not "%CONFIRM%"=="s" goto MENU
 
-call :VPS_DEPLOY_WEB_INLINE
-call :VPS_DEPLOY_FLUTTER_INLINE
+echo.
+echo  ── Fase 1: Backend + Frontend (git pull en VPS)...
+ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-server.sh"
+
+echo.
+echo  ── Fase 2: Flutter web (build local + scp)...
+cd /d "%~dp0mobile"
+C:\flutter\bin\flutter.bat build web --release ^
+  --dart-define=API_URL=http://%VPS_IP%:3001/api ^
+  --dart-define=PORTAL_URL=http://%VPS_IP%:3002
+if %ERRORLEVEL% NEQ 0 (
+  echo  ERROR: Fallo la compilacion Flutter.
+  cd /d "%~dp0"
+  pause
+  goto MENU
+)
+scp %SSH_KEY_ARG% -r "build\web\." %VPS_USER%@%VPS_IP%:%VPS_DIR%/flutter-web/
+ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-flutter.sh"
+cd /d "%~dp0"
 
 echo.
 echo  [OK] Deploy completo terminado.
@@ -613,34 +623,6 @@ echo   App Movil -^> http://%VPS_IP%:4000
 echo.
 pause
 goto MENU
-
-:VPS_DEPLOY_WEB_INLINE
-echo  [Backend/Frontend] Subiendo archivos...
-scp %SSH_KEY_ARG% -r "%~dp0backend\src" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/ >nul
-scp %SSH_KEY_ARG% -r "%~dp0backend\prisma" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/ >nul
-scp %SSH_KEY_ARG% "%~dp0backend\package.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/backend/ >nul
-scp %SSH_KEY_ARG% -r "%~dp0frontend\src" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ >nul
-scp %SSH_KEY_ARG% -r "%~dp0frontend\public" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ >nul 2>nul
-scp %SSH_KEY_ARG% "%~dp0frontend\package.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ >nul
-scp %SSH_KEY_ARG% "%~dp0frontend\next.config.*" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ >nul 2>nul
-scp %SSH_KEY_ARG% "%~dp0frontend\tailwind.config.*" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ >nul 2>nul
-scp %SSH_KEY_ARG% "%~dp0frontend\tsconfig.json" %VPS_USER%@%VPS_IP%:%VPS_DIR%/frontend/ >nul 2>nul
-scp %SSH_KEY_ARG% "%~dp0vps\ecosystem.config.js" %VPS_USER%@%VPS_IP%:%VPS_DIR%/ >nul
-scp %SSH_KEY_ARG% "%~dp0vps\deploy-server.sh" %VPS_USER%@%VPS_IP%:%VPS_DIR%/ >nul
-ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "chmod +x %VPS_DIR%/deploy-server.sh" >nul
-echo  [Backend/Frontend] Instalando + reiniciando...
-ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/deploy-server.sh"
-goto :eof
-
-:VPS_DEPLOY_FLUTTER_INLINE
-echo  [Flutter] Compilando...
-cd /d "%~dp0mobile"
-C:\flutter\bin\flutter.bat build web --release --dart-define=API_URL=http://%VPS_IP%:3001/api --dart-define=PORTAL_URL=http://%VPS_IP%:3002
-echo  [Flutter] Subiendo...
-scp %SSH_KEY_ARG% -r "build\web\." %VPS_USER%@%VPS_IP%:%VPS_DIR%/flutter-web/ >nul
-ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "pm2 list | grep -q iados-flutter && pm2 restart iados-flutter || pm2 start %VPS_DIR%/ecosystem.config.js --only iados-flutter && pm2 save --force >/dev/null 2>&1"
-cd /d "%~dp0"
-goto :eof
 
 ::-----------------------------------------------------------------
 :VPS_STATUS
@@ -670,6 +652,103 @@ call :VPS_LOAD_CONFIG
 echo  Mostrando logs... (CTRL+C para salir)
 echo.
 ssh %SSH_KEY_ARG% %VPS_USER%@%VPS_IP% "pm2 logs --lines 80 --nostream"
+echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:BUILD_APK_VPS
+cls
+echo.
+echo  ================================================
+echo   COMPILAR APK ANDROID  →  VPS (74.208.149.7)
+echo  ================================================
+echo.
+call :VPS_LOAD_CONFIG
+
+:: Leer versión actual
+set "CURRENT_VER="
+set /p CURRENT_VER=<"%~dp0VERSION"
+echo  Version actual: %CURRENT_VER%
+echo.
+set "APK_NAME="
+set /p APK_NAME="  Nombre del APK (ej: AccesoDigital-v%CURRENT_VER%-cliente): "
+if "%APK_NAME%"=="" set "APK_NAME=AccesoDigital-%CURRENT_VER%"
+
+echo.
+echo  Compilando APK apuntando al VPS %VPS_IP%...
+echo  (Esto tarda varios minutos)
+echo.
+cd /d "%~dp0mobile"
+C:\flutter\bin\flutter.bat build apk --release ^
+  --dart-define=API_URL=http://%VPS_IP%:3001/api ^
+  --dart-define=PORTAL_URL=http://%VPS_IP%:3002
+if %ERRORLEVEL% NEQ 0 (
+  echo.
+  echo  ERROR: La compilacion fallo.
+  cd /d "%~dp0"
+  pause
+  goto MENU
+)
+copy /Y "build\app\outputs\flutter-apk\app-release.apk" "build\app\outputs\flutter-apk\%APK_NAME%.apk" >nul
+echo.
+echo  [OK] APK lista:
+echo   mobile\build\app\outputs\flutter-apk\%APK_NAME%.apk
+echo.
+echo  API apuntando a: http://%VPS_IP%:3001/api
+echo.
+cd /d "%~dp0"
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:VERSION_BUMP
+cls
+echo.
+echo  ================================================
+echo   NUEVA VERSION
+echo  ================================================
+echo.
+set "CURRENT_VER="
+set /p CURRENT_VER=<"%~dp0VERSION"
+echo  Version actual: %CURRENT_VER%
+echo.
+echo  Escribe la nueva version (ej: 1.1.0) o Enter para cancelar:
+set "NEW_VER="
+set /p NEW_VER="  Nueva version: "
+if "%NEW_VER%"=="" (
+  echo  Cancelado.
+  pause
+  goto MENU
+)
+
+:: Actualizar VERSION file
+echo %NEW_VER%> "%~dp0VERSION"
+echo.
+echo  [1/4] VERSION actualizado a %NEW_VER%
+
+:: Verificar estado de git
+echo  [2/4] Estado git...
+cd /d "%~dp0"
+git add VERSION
+git status --short
+
+echo.
+set "COMMIT_MSG="
+set /p COMMIT_MSG="  Mensaje del commit (Enter = 'version %NEW_VER%'): "
+if "%COMMIT_MSG%"=="" set "COMMIT_MSG=version %NEW_VER%"
+
+git commit -m "%COMMIT_MSG%"
+echo  [3/4] Commit creado.
+
+echo  [4/4] Creando tag v%NEW_VER% y pusheando a GitHub...
+git tag -a "v%NEW_VER%" -m "Version %NEW_VER%"
+git push
+git push origin "v%NEW_VER%"
+
+echo.
+echo  [OK] Version %NEW_VER% taggeada y publicada en GitHub.
+echo  Ahora usa la opcion 19 o 21 para deployar al VPS.
 echo.
 pause
 goto MENU
