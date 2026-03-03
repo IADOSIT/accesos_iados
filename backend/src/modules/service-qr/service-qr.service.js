@@ -80,7 +80,7 @@ async function submitRequest(tenantId, qrId, data) {
   const settings = (tenant?.settings && typeof tenant.settings === 'object') ? tenant.settings : {};
   const cfg = (settings.serviceQrConfig && typeof settings.serviceQrConfig === 'object') ? settings.serviceQrConfig : {};
 
-  const ttlMinutes = cfg.requestTtlMinutes || 15;
+  const ttlMinutes = cfg.requestTtlMinutes || 30;
   const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
 
   const request = await prisma.serviceRequest.create({

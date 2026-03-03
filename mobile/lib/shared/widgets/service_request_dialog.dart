@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,12 +35,42 @@ class _ServiceRequestDialogState extends ConsumerState<ServiceRequestDialog> {
     try {
       final api = ref.read(apiClientProvider);
       final res = await api.get('/service-qr/requests/$requestId');
-      final photo = res.data?['data']?['photoData'] as String?;
+      final data = res.data?['data'] as Map<String, dynamic>?;
+
+      final status    = data?['status']    as String? ?? 'PENDING';
+      final expiresAt = data?['expiresAt'] as String?;
+
+      // Verificar expiración aunque cron no haya corrido aún
+      final isExpired = expiresAt != null &&
+          DateTime.tryParse(expiresAt)?.isBefore(DateTime.now()) == true;
+
+      if (mounted && (status != 'PENDING' || isExpired)) {
+        final wasApproved = status == 'APPROVED';
+        setState(() {
+          _done = true;
+          _approved = wasApproved;
+          _statusMsg = isExpired && status == 'PENDING'
+              ? 'Esta solicitud ha expirado'
+              : wasApproved
+                  ? 'Acceso ya fue aprobado'
+                  : 'Solicitud ya fue rechazada';
+        });
+      }
+
+      final photo = data?['photoData'] as String?;
       if (mounted && photo != null && photo.isNotEmpty) {
         setState(() => _photoBase64 = photo);
       }
     } catch (_) {}
     if (mounted) setState(() => _loadingPhoto = false);
+  }
+
+  String _extractErrorMsg(dynamic e) {
+    if (e is DioException) {
+      final msg = e.response?.data?['message'] as String?;
+      if (msg != null && msg.isNotEmpty) return msg;
+    }
+    return 'Error al procesar la solicitud';
   }
 
   Future<void> _approve() async {
@@ -51,7 +82,7 @@ class _ServiceRequestDialogState extends ConsumerState<ServiceRequestDialog> {
       await api.patch('/service-qr/requests/$requestId/approve', data: {});
       if (mounted) setState(() { _done = true; _approved = true; _statusMsg = 'Acceso aprobado — dispositivo activado'; });
     } catch (e) {
-      if (mounted) setState(() { _statusMsg = 'Error: ${e.toString()}'; _loading = false; });
+      if (mounted) setState(() { _statusMsg = _extractErrorMsg(e); _loading = false; });
     }
   }
 
@@ -64,7 +95,7 @@ class _ServiceRequestDialogState extends ConsumerState<ServiceRequestDialog> {
       await api.patch('/service-qr/requests/$requestId/reject', data: {});
       if (mounted) setState(() { _done = true; _approved = false; _statusMsg = 'Solicitud rechazada'; });
     } catch (e) {
-      if (mounted) setState(() { _statusMsg = 'Error: ${e.toString()}'; _loading = false; });
+      if (mounted) setState(() { _statusMsg = _extractErrorMsg(e); _loading = false; });
     }
   }
 
@@ -83,7 +114,7 @@ class _ServiceRequestDialogState extends ConsumerState<ServiceRequestDialog> {
     final icon = icons[service] ?? '🔔';
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1E3A5F),
+      backgroundColor: const Color(0xFF0F4C3A),
       body: SafeArea(
         child: Stack(
           children: [

@@ -138,7 +138,7 @@ class _VisitorsScreenState extends ConsumerState<VisitorsScreen>
         onPressed: _showGenerateQr,
         backgroundColor: c.primary,
         icon: const Icon(Icons.qr_code_rounded, color: Colors.white),
-        label: const Text('Generar QR', style: TextStyle(color: Colors.white)),
+        label: const Text('Generar QR visita', style: TextStyle(color: Colors.white)),
       ),
       body: TabBarView(
         controller: _tabCtrl,

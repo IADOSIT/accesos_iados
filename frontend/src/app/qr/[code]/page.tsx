@@ -24,7 +24,7 @@ async function getQRData(code: string): Promise<{ data: QRData | null; error: st
   try {
     const res = await fetch(`${apiUrl}/access/qr/public/${code}`, { cache: 'no-store' });
     const json = await res.json();
-    if (json.success) return { data: json.data, error: '' };
+    if (json.ok) return { data: json.data, error: '' };
     return { data: null, error: json.message || 'Código no encontrado' };
   } catch {
     return { data: null, error: 'No se pudo cargar el código QR' };

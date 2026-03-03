@@ -32,6 +32,18 @@ final recentAccessProvider = FutureProvider<List<dynamic>>((ref) async {
   return res.data['data'] as List? ?? [];
 });
 
+final recentServiceRequestsProvider = FutureProvider<List<dynamic>>((ref) async {
+  final auth = ref.watch(authProvider);
+  if (auth.tenantId == null) return [];
+  final api = ref.watch(apiClientProvider);
+  try {
+    final res = await api.get('/service-qr/requests', params: {'limit': '5'});
+    return res.data['data'] as List? ?? [];
+  } catch (_) {
+    return [];
+  }
+});
+
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
@@ -42,6 +54,7 @@ class DashboardScreen extends ConsumerWidget {
     final recentAccess = ref.watch(recentAccessProvider);
 
     final tenantConfigAsync = ref.watch(tenantConfigProvider);
+    final recentServiceRequests = ref.watch(recentServiceRequestsProvider);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -170,25 +183,47 @@ class DashboardScreen extends ConsumerWidget {
 
                 const SizedBox(height: 8),
 
-                recentAccess.when(
-                  loading: () => _AccessLogSkeleton(),
-                  error: (e, _) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text(e.toString(),
-                        style: TextStyle(color: context.colors.error, fontSize: 13)),
-                  ),
-                  data: (logs) => logs.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          child: Center(
-                            child: Text('Sin accesos recientes',
-                                style: TextStyle(color: context.colors.textMuted, fontSize: 13)),
-                          ),
-                        )
-                      : Column(
-                          children: logs.map((log) => _AccessLogItem(log: log)).toList(),
-                        ),
-                ),
+                Builder(builder: (context) {
+                  if (recentAccess.isLoading || recentServiceRequests.isLoading) {
+                    return _AccessLogSkeleton();
+                  }
+                  if (recentAccess.hasError) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(recentAccess.error.toString(),
+                          style: TextStyle(color: context.colors.error, fontSize: 13)),
+                    );
+                  }
+
+                  final logs = recentAccess.valueOrNull ?? [];
+                  final svcReqs = recentServiceRequests.valueOrNull ?? [];
+
+                  // Normalizar y combinar
+                  final combined = [
+                    ...logs.map((l) => _ActivityItem(type: 'access', data: l,
+                        date: DateTime.tryParse(l['createdAt'] as String? ?? '') ?? DateTime(0))),
+                    ...svcReqs.map((s) => _ActivityItem(type: 'service', data: s,
+                        date: DateTime.tryParse(s['createdAt'] as String? ?? '') ?? DateTime(0))),
+                  ]..sort((a, b) => b.date.compareTo(a.date));
+
+                  final items = combined.take(10).toList();
+
+                  if (items.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Center(
+                        child: Text('Sin actividad reciente',
+                            style: TextStyle(color: context.colors.textMuted, fontSize: 13)),
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    children: items.map((item) => item.type == 'service'
+                        ? _ServiceRequestLogItem(data: item.data)
+                        : _AccessLogItem(log: item.data)).toList(),
+                  );
+                }),
 
                 const SizedBox(height: 80),
               ]),
@@ -806,30 +841,104 @@ class _AccessLogItem extends StatelessWidget {
   final dynamic log;
   const _AccessLogItem({required this.log});
 
+  // Categorías de QR rápido
+  static const _quickCategories = {'Uber/Didi', 'Delivery', 'Servicio'};
+
+  String _title() {
+    final method = log['method'] as String? ?? '';
+    final direction = log['direction'] as String? ?? 'ENTRY';
+    final visitorName = log['visitorName'] as String? ?? '';
+    final dir = direction == 'EXIT' ? 'Salida' : 'Entrada';
+
+    switch (method) {
+      case 'APP':
+        return '$dir — Residente (App)';
+      case 'QR':
+        if (_quickCategories.contains(visitorName)) {
+          return 'QR Rápido — $visitorName';
+        }
+        return visitorName.isNotEmpty ? 'QR Visita — $visitorName' : 'Código QR';
+      case 'GUARD_OVERRIDE':
+        return visitorName.isNotEmpty ? 'Acceso manual — $visitorName' : 'Acceso manual (Guardia)';
+      case 'REMOTE':
+        return '$dir — Acceso remoto';
+      case 'EXIT_SENSOR':
+        return 'Salida — Sensor automático';
+      default:
+        return method;
+    }
+  }
+
+  String _subtitle() {
+    final parts = <String>[];
+
+    final unit = log['unit'] as Map?;
+    final identifier = unit?['identifier'] as String?;
+    if (identifier != null && identifier.isNotEmpty) parts.add('Unidad $identifier');
+
+    final plate = log['visitorPlate'] as String?;
+    if (plate != null && plate.isNotEmpty) parts.add('Placa: $plate');
+
+    final device = log['device'] as Map?;
+    final deviceName = device?['name'] as String?;
+    if (deviceName != null && deviceName.isNotEmpty) parts.add(deviceName);
+
+    final user = log['user'] as Map?;
+    final firstName = user?['firstName'] as String?;
+    final lastName  = user?['lastName']  as String?;
+    if (firstName != null) {
+      final method = log['method'] as String? ?? '';
+      if (method == 'GUARD_OVERRIDE') parts.add('Guardia: $firstName ${lastName ?? ''}');
+    }
+
+    return parts.join(' · ');
+  }
+
+  IconData _icon() {
+    final method = log['method'] as String? ?? '';
+    final visitorName = log['visitorName'] as String? ?? '';
+    switch (method) {
+      case 'APP':           return Icons.smartphone_rounded;
+      case 'QR':
+        return _quickCategories.contains(visitorName)
+            ? Icons.flash_on_rounded
+            : Icons.qr_code_scanner_rounded;
+      case 'GUARD_OVERRIDE': return Icons.security_rounded;
+      case 'REMOTE':         return Icons.wifi_rounded;
+      case 'EXIT_SENSOR':    return Icons.sensor_door_rounded;
+      default:               return Icons.key_rounded;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final isLight = Theme.of(context).brightness == Brightness.light;
     final granted = log['granted'] as bool? ?? false;
-    final method = log['method'] as String? ?? '';
-    final visitorName = log['visitorName'] as String?;
-    final unitId = log['unitId'] as String?;
     final createdAt = log['createdAt'] as String?;
+    final direction = log['direction'] as String? ?? 'ENTRY';
 
-    final color = granted ? c.accessGranted : c.accessDenied;
-    final icon = granted ? Icons.check_circle_outline : Icons.cancel_outlined;
+    final statusColor = granted ? c.accessGranted : c.accessDenied;
+    final dirColor = direction == 'EXIT' ? c.warning : c.primary;
 
     String timeStr = '';
+    String dateStr = '';
     if (createdAt != null) {
       try {
         final dt = DateTime.parse(createdAt).toLocal();
+        final now = DateTime.now();
         timeStr = DateFormat('HH:mm').format(dt);
+        if (dt.day != now.day || dt.month != now.month) {
+          dateStr = DateFormat('dd/MM').format(dt);
+        }
       } catch (_) {}
     }
 
+    final subtitle = _subtitle();
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: c.bgCard,
         borderRadius: BorderRadius.circular(12),
@@ -839,67 +948,191 @@ class _AccessLogItem extends StatelessWidget {
             : null,
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
+              color: dirColor.withOpacity(0.12),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, color: color, size: 18),
+            child: Icon(_icon(), color: dirColor, size: 18),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  visitorName ?? 'Residente',
+                  _title(),
                   style: TextStyle(
                     color: c.textPrimary,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
                   ),
                 ),
-                Text(
-                  _methodLabel(method),
-                  style: TextStyle(color: c.textMuted, fontSize: 12),
+                if (subtitle.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(subtitle, style: TextStyle(color: c.textMuted, fontSize: 11)),
+                ],
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    granted ? 'Permitido' : 'Denegado',
+                    style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w600),
+                  ),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(timeStr, style: TextStyle(color: c.textMuted, fontSize: 12)),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  granted ? 'Permitido' : 'Denegado',
-                  style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600),
-                ),
-              ),
+              Text(timeStr, style: TextStyle(color: c.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
+              if (dateStr.isNotEmpty)
+                Text(dateStr, style: TextStyle(color: c.textMuted, fontSize: 10)),
             ],
           ),
         ],
       ),
     );
   }
+}
 
-  String _methodLabel(String method) {
-    switch (method) {
-      case 'APP': return 'App móvil';
-      case 'QR': return 'Código QR';
-      case 'GUARD_OVERRIDE': return 'Permiso guardia';
-      case 'REMOTE': return 'Remoto';
-      case 'EXIT_SENSOR': return 'Sensor de salida';
-      default: return method;
+// ── Helper para lista combinada ────────────────────────────────────────────
+class _ActivityItem {
+  final String type; // 'access' | 'service'
+  final dynamic data;
+  final DateTime date;
+  const _ActivityItem({required this.type, required this.data, required this.date});
+}
+
+// ── Item de solicitud de servicio en el log ────────────────────────────────
+class _ServiceRequestLogItem extends StatelessWidget {
+  final dynamic data;
+  const _ServiceRequestLogItem({required this.data});
+
+  static const _serviceIcons = {
+    'CFE': '⚡', 'Gas': '🔥', 'Agua': '💧', 'Basura': '🗑️',
+    'Paquetería': '📦', 'Mensajería': '📬', 'Domicilio': '🛵',
+    'Técnico': '🔧', 'Jardinería': '🌿', 'Limpieza': '🧹',
+  };
+
+  Color _statusColor(String status, AppColorsScheme c) {
+    switch (status) {
+      case 'APPROVED': return c.success;
+      case 'REJECTED': return c.error;
+      case 'EXPIRED':  return c.textMuted;
+      default:         return c.warning; // PENDING
     }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'APPROVED': return 'Aprobado';
+      case 'REJECTED': return 'Rechazado';
+      case 'EXPIRED':  return 'Expirado';
+      default:         return 'Pendiente';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final service   = data['service']  as String? ?? 'Servicio';
+    final status    = data['status']   as String? ?? 'PENDING';
+    final phone     = data['visitorPhone'] as String? ?? '';
+    final createdAt = data['createdAt'] as String?;
+    final unit      = data['unit']     as Map?;
+    final identifier = unit?['identifier'] as String?;
+
+    final emoji = _serviceIcons[service] ?? '🔔';
+    final statusColor = _statusColor(status, c);
+
+    String timeStr = '';
+    String dateStr = '';
+    if (createdAt != null) {
+      try {
+        final dt = DateTime.parse(createdAt).toLocal();
+        final now = DateTime.now();
+        timeStr = DateFormat('HH:mm').format(dt);
+        if (dt.day != now.day || dt.month != now.month) {
+          dateStr = DateFormat('dd/MM').format(dt);
+        }
+      } catch (_) {}
+    }
+
+    final subtitle = [
+      if (identifier != null) 'Unidad $identifier',
+      if (phone.isNotEmpty) phone,
+    ].join(' · ');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: c.bgCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.border),
+        boxShadow: isLight
+            ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2))]
+            : null,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36, height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: c.info.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(emoji, style: const TextStyle(fontSize: 18)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Servicio externo — $service',
+                    style: TextStyle(color: c.textPrimary, fontWeight: FontWeight.w600, fontSize: 13)),
+                if (subtitle.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(subtitle, style: TextStyle(color: c.textMuted, fontSize: 11)),
+                ],
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(_statusLabel(status),
+                      style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(timeStr, style: TextStyle(color: c.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
+              if (dateStr.isNotEmpty)
+                Text(dateStr, style: TextStyle(color: c.textMuted, fontSize: 10)),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
