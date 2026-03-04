@@ -36,6 +36,8 @@ export default function UsuariosPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const LIMIT = 20;
+  const [search, setSearch] = useState('');
+  const [filterRole, setFilterRole] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editRow, setEditRow] = useState<any>(null);
@@ -51,9 +53,12 @@ export default function UsuariosPage() {
   const [didImport, setDidImport] = useState(false);
   const [csvTenantId, setCsvTenantId] = useState(tenantId || '');
 
-  const load = (p = page) => {
+  const load = (p = page, q = search, r = filterRole) => {
     setLoading(true);
-    usersApi.list(`page=${p}&limit=${LIMIT}`)
+    const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+    if (q) params.set('search', q);
+    if (r) params.set('role', r);
+    usersApi.list(params.toString())
       .then((res: any) => { setUsers(res.data || []); setTotal(res.pagination?.total || 0); })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -62,10 +67,13 @@ export default function UsuariosPage() {
   const goToPage = (p: number) => { setPage(p); load(p); };
 
   useEffect(() => {
-    setPage(1);
-    load(1);
+    setPage(1); setSearch(''); setFilterRole('');
+    load(1, '', '');
     unitsApi.list('limit=1000').then((res: any) => setUnits(res.data || [])).catch(console.error);
   }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Filtros cambian → reset página
+  useEffect(() => { setPage(1); load(1, search, filterRole); }, [search, filterRole]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (isSuperAdmin) {
@@ -251,6 +259,40 @@ export default function UsuariosPage() {
           </div>
         }
       />
+
+      {/* Filtros */}
+      <div className="flex flex-wrap items-end gap-3 mb-5">
+        <div className="flex-1 min-w-[200px]">
+          <input
+            type="text"
+            placeholder="Buscar por nombre, email o teléfono..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="input-field"
+          />
+        </div>
+        <div>
+          <select
+            value={filterRole}
+            onChange={e => setFilterRole(e.target.value)}
+            className="input-field py-2 text-sm min-w-[150px]"
+          >
+            <option value="">Todos los roles</option>
+            <option value="ADMIN">Administrador</option>
+            <option value="GUARD">Guardia</option>
+            <option value="RESIDENT">Residente</option>
+          </select>
+        </div>
+        {(search || filterRole) && (
+          <button
+            onClick={() => { setSearch(''); setFilterRole(''); }}
+            className="text-xs text-slate-400 hover:text-slate-600 underline self-center"
+          >
+            Limpiar
+          </button>
+        )}
+        <span className="self-center text-sm text-slate-400 ml-auto">{total} usuario{total !== 1 ? 's' : ''}</span>
+      </div>
 
       <DataTable
         columns={columns}

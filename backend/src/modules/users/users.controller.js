@@ -13,7 +13,7 @@ async function create(req, res) {
 
 async function findAll(req, res) {
   const { page, limit, skip } = parsePagination(req.query);
-  const { data, total } = await svc.findAll(req.tenantId, { skip, limit });
+  const { data, total } = await svc.findAll(req.tenantId, { skip, limit, search: req.query.search, role: req.query.role });
   return paginated(res, data, total, page, limit);
 }
 

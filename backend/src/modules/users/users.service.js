@@ -41,8 +41,19 @@ async function create(tenantId, data) {
   return { ...user, role: data.role, passwordHash: undefined };
 }
 
-async function findAll(tenantId, { skip, limit }) {
+async function findAll(tenantId, { skip, limit, search, role }) {
   const where = { tenantId, isActive: true };
+  if (role) where.role = role;
+  if (search) {
+    where.user = {
+      OR: [
+        { firstName: { contains: search, mode: 'insensitive' } },
+        { lastName: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+      ],
+    };
+  }
   const [data, total] = await Promise.all([
     prisma.userTenant.findMany({
       where,

@@ -28,6 +28,7 @@ async function getCharges(req, res) {
     : req.query.unitId;
   const { data, total } = await svc.getCharges(req.tenantId, {
     skip, limit, unitId, status: req.query.status,
+    from: req.query.from, to: req.query.to,
   });
   return paginated(res, data, total, page, limit);
 }
@@ -51,7 +52,7 @@ async function reconcile(req, res) {
 
 async function getDelinquent(req, res) {
   const { page, limit, skip } = parsePagination(req.query);
-  const { data, total } = await svc.getDelinquentUnits(req.tenantId, { skip, limit });
+  const { data, total } = await svc.getDelinquentUnits(req.tenantId, { skip, limit, search: req.query.search });
   return paginated(res, data, total, page, limit);
 }
 

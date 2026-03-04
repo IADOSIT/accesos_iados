@@ -13,6 +13,13 @@ interface QuickPaymentForm {
   notes: string;
 }
 
+function monthToRange(ym: string) {
+  const [y, m] = ym.split('-').map(Number);
+  const from = new Date(y, m - 1, 1).toISOString();
+  const to = new Date(y, m, 0, 23, 59, 59, 999).toISOString();
+  return { from, to };
+}
+
 export default function PagosPage() {
   const [tab, setTab] = useState<'charges' | 'payments'>('charges');
   const [data, setData] = useState<any[]>([]);
@@ -21,6 +28,13 @@ export default function PagosPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const LIMIT = 50;
+
+  // Filtros cargos
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
+
+  // Filtros pagos
+  const [filterPayMonth, setFilterPayMonth] = useState('');
 
   // Modal nuevo cargo
   const [showChargeModal, setShowChargeModal] = useState(false);
@@ -36,10 +50,29 @@ export default function PagosPage() {
   const [quickForm, setQuickForm] = useState<QuickPaymentForm>({ amount: '', method: 'CASH', reference: '', notes: '' });
   const [quickLoading, setQuickLoading] = useState(false);
 
-  const load = (t: string, p: number) => {
+  const buildParams = (t: string, p: number) => {
+    const q = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+    if (t === 'charges') {
+      if (filterStatus) q.set('status', filterStatus);
+      if (filterMonth) {
+        const { from, to } = monthToRange(filterMonth);
+        q.set('from', from);
+        q.set('to', to);
+      }
+    } else {
+      if (filterPayMonth) {
+        const { from, to } = monthToRange(filterPayMonth);
+        q.set('from', from);
+        q.set('to', to);
+      }
+    }
+    return q.toString();
+  };
+
+  const load = (t = tab, p = page) => {
     setLoading(true);
     const fn = t === 'charges' ? paymentsApi.charges : paymentsApi.payments;
-    fn(`page=${p}&limit=${LIMIT}`)
+    fn(buildParams(t, p))
       .then((res: any) => {
         setData(res.data || []);
         setTotalPages(res.pagination?.totalPages || 1);
@@ -49,7 +82,19 @@ export default function PagosPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { setPage(1); load(tab, 1); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Al cambiar tab: reset filtros y página
+  useEffect(() => {
+    setPage(1);
+    setFilterStatus('');
+    setFilterMonth('');
+    setFilterPayMonth('');
+    load(tab, 1);
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Al cambiar filtros: reset a página 1
+  useEffect(() => { setPage(1); load(tab, 1); }, [filterStatus, filterMonth, filterPayMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Al cambiar página
   useEffect(() => { load(tab, page); }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Abrir modal "Pago recibido" desde fila
@@ -162,6 +207,8 @@ export default function PagosPage() {
     },
   ];
 
+  const hasActiveFilters = filterStatus || filterMonth || filterPayMonth;
+
   return (
     <div>
       <PageHeader
@@ -176,7 +223,7 @@ export default function PagosPage() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-white/50 p-1 rounded-xl w-fit">
+      <div className="flex gap-1 mb-4 bg-white/50 p-1 rounded-xl w-fit">
         <button onClick={() => setTab('charges')}
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'charges' ? 'bg-white shadow-sm text-primary-700' : 'text-slate-500 hover:text-slate-700'}`}>
           Cargos
@@ -185,6 +232,62 @@ export default function PagosPage() {
           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === 'payments' ? 'bg-white shadow-sm text-primary-700' : 'text-slate-500 hover:text-slate-700'}`}>
           Pagos
         </button>
+      </div>
+
+      {/* Filtros */}
+      <div className="flex flex-wrap items-end gap-3 mb-5 p-4 bg-white/60 border border-slate-100 rounded-xl">
+        {tab === 'charges' && (
+          <>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Estado</label>
+              <select
+                value={filterStatus}
+                onChange={e => setFilterStatus(e.target.value)}
+                className="input-field py-2 text-sm min-w-[140px]"
+              >
+                <option value="">Todos</option>
+                <option value="PENDING">Pendiente</option>
+                <option value="PARTIAL">Parcial</option>
+                <option value="PAID">Pagado</option>
+                <option value="CANCELLED">Cancelado</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Mes de vencimiento</label>
+              <input
+                type="month"
+                value={filterMonth}
+                onChange={e => setFilterMonth(e.target.value)}
+                className="input-field py-2 text-sm"
+              />
+            </div>
+          </>
+        )}
+
+        {tab === 'payments' && (
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Mes</label>
+            <input
+              type="month"
+              value={filterPayMonth}
+              onChange={e => setFilterPayMonth(e.target.value)}
+              className="input-field py-2 text-sm"
+            />
+          </div>
+        )}
+
+        {hasActiveFilters && (
+          <button
+            onClick={() => { setFilterStatus(''); setFilterMonth(''); setFilterPayMonth(''); }}
+            className="text-xs text-slate-400 hover:text-slate-600 underline self-end pb-2"
+          >
+            Limpiar filtros
+          </button>
+        )}
+
+        <span className="ml-auto self-end pb-2 text-sm text-slate-400">
+          {total} registro{total !== 1 ? 's' : ''}
+        </span>
       </div>
 
       <DataTable

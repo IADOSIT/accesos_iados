@@ -42,10 +42,15 @@ async function createPayment(tenantId, data) {
   return payment;
 }
 
-async function getCharges(tenantId, { skip, limit, unitId, status }) {
+async function getCharges(tenantId, { skip, limit, unitId, status, from, to }) {
   const where = { tenantId };
   if (unitId) where.unitId = unitId;
   if (status) where.status = status;
+  if (from || to) {
+    where.dueDate = {};
+    if (from) where.dueDate.gte = new Date(from);
+    if (to) where.dueDate.lte = new Date(to);
+  }
 
   const [data, total] = await Promise.all([
     prisma.charge.findMany({
@@ -92,8 +97,14 @@ async function reconcile(tenantId, paymentIds) {
   });
 }
 
-async function getDelinquentUnits(tenantId, { skip = 0, limit = 20 } = {}) {
+async function getDelinquentUnits(tenantId, { skip = 0, limit = 20, search } = {}) {
   const where = { tenantId, isDelinquent: true, isActive: true };
+  if (search) {
+    where.OR = [
+      { identifier: { contains: search, mode: 'insensitive' } },
+      { ownerName: { contains: search, mode: 'insensitive' } },
+    ];
+  }
   const [data, total] = await Promise.all([
     prisma.unit.findMany({
       where,

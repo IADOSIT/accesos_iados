@@ -12,10 +12,12 @@ export default function MorososPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState('');
 
-  useEffect(() => {
+  const load = (p = page, q = search) => {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
+    const params = new URLSearchParams({ page: String(p), limit: String(LIMIT) });
+    if (q) params.set('search', q);
     paymentsApi.delinquent(params.toString())
       .then((res: any) => {
         setUnits(res.data || []);
@@ -23,30 +25,39 @@ export default function MorososPage() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [page]);
+  };
+
+  useEffect(() => { setPage(1); load(1, search); }, [search]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(page, search); }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalPages = Math.ceil(total / LIMIT);
-
-  if (loading) {
-    return (
-      <div>
-        <PageHeader title="Morosos" subtitle="Unidades con adeudo pendiente" />
-        <div className="space-y-4">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="glass-card animate-pulse h-32" />
-          ))}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div>
       <PageHeader title="Morosos" subtitle={`${total} unidades con adeudo pendiente`} />
 
-      {total === 0 ? (
+      {/* Búsqueda */}
+      <div className="mb-5">
+        <input
+          type="text"
+          placeholder="Buscar por unidad o propietario..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="input-field max-w-sm"
+        />
+      </div>
+
+      {loading ? (
+        <div className="space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="glass-card animate-pulse h-32" />
+          ))}
+        </div>
+      ) : units.length === 0 ? (
         <div className="glass-card text-center py-12">
-          <p className="text-slate-400 text-lg">Todas las unidades están al corriente</p>
+          <p className="text-slate-400 text-lg">
+            {search ? 'Sin resultados para la búsqueda' : 'Todas las unidades están al corriente'}
+          </p>
         </div>
       ) : (
         <>
