@@ -92,15 +92,22 @@ async function reconcile(tenantId, paymentIds) {
   });
 }
 
-async function getDelinquentUnits(tenantId) {
-  return prisma.unit.findMany({
-    where: { tenantId, isDelinquent: true, isActive: true },
-    include: {
-      charges: { where: { status: { in: ['PENDING', 'PARTIAL'] } }, orderBy: { dueDate: 'asc' } },
-      residents: { include: { user: { select: { firstName: true, lastName: true, email: true, phone: true } } } },
-    },
-    orderBy: { identifier: 'asc' },
-  });
+async function getDelinquentUnits(tenantId, { skip = 0, limit = 20 } = {}) {
+  const where = { tenantId, isDelinquent: true, isActive: true };
+  const [data, total] = await Promise.all([
+    prisma.unit.findMany({
+      where,
+      include: {
+        charges: { where: { status: { in: ['PENDING', 'PARTIAL'] } }, orderBy: { dueDate: 'asc' } },
+        residents: { include: { user: { select: { firstName: true, lastName: true, email: true, phone: true } } } },
+      },
+      skip,
+      take: limit,
+      orderBy: { identifier: 'asc' },
+    }),
+    prisma.unit.count({ where }),
+  ]);
+  return { data, total };
 }
 
 async function bulkPayments(tenantId, { month, year, payments }) {

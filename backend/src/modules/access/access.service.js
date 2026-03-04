@@ -7,6 +7,20 @@ const notif = require('../../services/notification');
 // Cache en memoria para cooldown anti-spam
 const cooldownMap = new Map();
 
+// Leer política de morosos del tenant (con defaults seguros)
+async function getDelinquentPolicy(tenantId) {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+  const s = (tenant?.settings && typeof tenant.settings === 'object') ? tenant.settings : {};
+  const p = (s.delinquentPolicy && typeof s.delinquentPolicy === 'object') ? s.delinquentPolicy : {};
+  return {
+    blockAppAccess:    p.blockAppAccess    ?? true,
+    blockQrAccess:     p.blockQrAccess     ?? true,
+    blockQrGeneration: p.blockQrGeneration ?? false,
+    notifyResident:    p.notifyResident    ?? true,
+    notifyAdmin:       p.notifyAdmin       ?? false,
+  };
+}
+
 async function openGate(tenantId, userId, data) {
   const { deviceId, method, direction, qrCode, visitorName, visitorPlate, notes, unitId } = data;
 
@@ -38,14 +52,17 @@ async function openGate(tenantId, userId, data) {
     return executeOpen(tenantId, resolvedUnitId, userId, device, method, direction, true, 'Apertura manual por guardia', visitorName, visitorPlate, notes);
   }
 
-  // Para apertura por APP: verificar morosidad
+  // Para apertura por APP: verificar morosidad según política del tenant
   if (method === 'APP' && resolvedUnitId) {
     const unit = await prisma.unit.findUnique({ where: { id: resolvedUnitId } });
     if (unit?.isDelinquent) {
-      // Registrar intento denegado
-      await createLog(tenantId, resolvedUnitId, userId, device.id, method, direction, false, 'Acceso denegado por morosidad', visitorName, visitorPlate, notes);
-      notif.sendToUnit(tenantId, resolvedUnitId, 'ACCESS_DENIED', 'Acceso denegado', 'Tu unidad tiene un adeudo pendiente', { deviceId: device.id });
-      throw { status: 403, message: 'Acceso denegado: unidad con adeudo pendiente' };
+      const policy = await getDelinquentPolicy(tenantId);
+      if (policy.blockAppAccess) {
+        await createLog(tenantId, resolvedUnitId, userId, device.id, method, direction, false, 'Acceso denegado por morosidad', visitorName, visitorPlate, notes);
+        if (policy.notifyResident) notif.sendToUnit(tenantId, resolvedUnitId, 'ACCESS_DENIED', 'Acceso denegado', 'Tu unidad tiene un adeudo pendiente', { deviceId: device.id });
+        if (policy.notifyAdmin) notif.sendToRole(tenantId, 'ADMIN', 'ACCESS_DENIED', '⚠️ Acceso moroso denegado', `Unidad ${unit.identifier} intentó acceder con adeudo pendiente`, { unitId: resolvedUnitId });
+        throw { status: 403, message: 'Acceso denegado: unidad con adeudo pendiente' };
+      }
     }
   }
 
@@ -74,12 +91,16 @@ async function handleQRAccess(tenantId, userId, device, code, visitorName, visit
     throw { status: 400, message: 'Código QR expirado o usos agotados' };
   }
 
-  // Verificar morosidad de la unidad del QR
+  // Verificar morosidad de la unidad del QR según política del tenant
   const unit = await prisma.unit.findUnique({ where: { id: qr.unitId } });
   if (unit?.isDelinquent) {
-    await createLog(tenantId, qr.unitId, userId, device.id, 'QR', 'ENTRY', false, 'Acceso denegado por morosidad', visitorName, visitorPlate, notes);
-    notif.sendToUnit(tenantId, qr.unitId, 'ACCESS_DENIED', 'Acceso denegado', 'Tu unidad tiene un adeudo pendiente', { deviceId: device.id });
-    throw { status: 403, message: 'Acceso denegado: unidad con adeudo pendiente' };
+    const policy = await getDelinquentPolicy(tenantId);
+    if (policy.blockQrAccess) {
+      await createLog(tenantId, qr.unitId, userId, device.id, 'QR', 'ENTRY', false, 'Acceso denegado por morosidad', visitorName, visitorPlate, notes);
+      if (policy.notifyResident) notif.sendToUnit(tenantId, qr.unitId, 'ACCESS_DENIED', 'Acceso denegado', 'Tu unidad tiene un adeudo pendiente', { deviceId: device.id });
+      if (policy.notifyAdmin) notif.sendToRole(tenantId, 'ADMIN', 'ACCESS_DENIED', '⚠️ Acceso moroso denegado', `Unidad ${unit.identifier} intentó acceder con adeudo pendiente`, { unitId: qr.unitId });
+      throw { status: 403, message: 'Acceso denegado: unidad con adeudo pendiente' };
+    }
   }
 
   // Incrementar usos
@@ -140,6 +161,15 @@ async function createLog(tenantId, unitId, userId, deviceId, method, direction, 
 }
 
 async function generateQR(tenantId, userId, unitId, data) {
+  // Verificar política de morosos para generación de QR
+  const unit = await prisma.unit.findUnique({ where: { id: unitId }, select: { isDelinquent: true } });
+  if (unit?.isDelinquent) {
+    const policy = await getDelinquentPolicy(tenantId);
+    if (policy.blockQrGeneration) {
+      throw { status: 403, message: 'No puedes generar códigos QR: unidad con adeudo pendiente' };
+    }
+  }
+
   const code = `IAD-${uuidv4().slice(0, 8).toUpperCase()}`;
   const expiresAt = new Date(Date.now() + data.expiresInHours * 60 * 60 * 1000);
 

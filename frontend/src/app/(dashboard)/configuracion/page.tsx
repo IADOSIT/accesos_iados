@@ -896,6 +896,16 @@ export default function ConfiguracionPage() {
   const [paymentErr, setPaymentErr] = useState('');
   const [savingPayment, setSavingPayment] = useState(false);
 
+  // ── Política de morosos ──
+  const DEFAULT_DELINQUENT_POLICY = {
+    blockAppAccess: true, blockQrAccess: true, blockQrGeneration: false,
+    notifyResident: true, notifyAdmin: false,
+  };
+  const [delinquentPolicy, setDelinquentPolicy] = useState({ ...DEFAULT_DELINQUENT_POLICY });
+  const [savingDelinquent, setSavingDelinquent] = useState(false);
+  const [delinquentMsg, setDelinquentMsg] = useState('');
+  const [delinquentErr, setDelinquentErr] = useState('');
+
   // ── SaaS Cobro por Uso ──
   const [saasCfg, setSaasCfg] = useState<SaasConfig>({ ...DEFAULT_SAAS_CFG });
   const [billing, setBilling] = useState<BillingStatus | null>(null);
@@ -949,6 +959,7 @@ export default function ConfiguracionPage() {
       setFlags({ ...DEFAULT_FLAGS, ...(s.featureFlags || {}) });
       if (s.uiTheme) setUiTheme(s.uiTheme);
       if (s.paymentConfig) setPaymentCfg({ ...DEFAULT_PAYMENT_CFG, ...s.paymentConfig });
+      if (s.delinquentPolicy) setDelinquentPolicy({ ...DEFAULT_DELINQUENT_POLICY, ...s.delinquentPolicy });
       if (s.emergencyNumbers) setEmergencyNums(s.emergencyNumbers);
       if (s.serviceQrConfig) setSvcQrCfg({ ...DEFAULT_SVC_QR, ...s.serviceQrConfig });
     }).catch(() => {});
@@ -1069,6 +1080,19 @@ export default function ConfiguracionPage() {
       setPaymentErr(err instanceof Error ? err.message : 'Error al guardar');
     } finally {
       setSavingPayment(false);
+    }
+  };
+
+  const handleSaveDelinquentPolicy = async () => {
+    setSavingDelinquent(true); setDelinquentMsg(''); setDelinquentErr('');
+    try {
+      await configApi.updateTenant({ delinquentPolicy });
+      setDelinquentMsg('Política guardada');
+      setTimeout(() => setDelinquentMsg(''), 3000);
+    } catch (err) {
+      setDelinquentErr(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setSavingDelinquent(false);
     }
   };
 
@@ -1831,6 +1855,83 @@ export default function ConfiguracionPage() {
                     <p className="text-sm">No se pudo cargar el estado de facturación</p>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Política de morosos ── */}
+          <div className="glass-card">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="font-semibold text-slate-700">Política de morosos</h3>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Define qué acciones se restringen a residentes con adeudo pendiente
+                </p>
+              </div>
+              <button onClick={handleSaveDelinquentPolicy} disabled={savingDelinquent}
+                className="btn-primary text-sm disabled:opacity-60">
+                {savingDelinquent ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+
+            {delinquentMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{delinquentMsg}</div>}
+            {delinquentErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{delinquentErr}</div>}
+
+            <div className="space-y-4">
+              {/* Restricciones de acceso */}
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Restricciones de acceso</p>
+                <div className="space-y-3">
+                  {([
+                    { key: 'blockAppAccess',    label: 'Bloquear apertura de portón por app',
+                      desc: 'El residente no puede abrir el portón desde la aplicación' },
+                    { key: 'blockQrAccess',     label: 'Bloquear acceso de visitas por QR',
+                      desc: 'Los QR generados por la unidad dejan de funcionar en entrada' },
+                    { key: 'blockQrGeneration', label: 'Bloquear generación de nuevos QR',
+                      desc: 'El residente no puede crear nuevos códigos QR mientras tenga adeudo' },
+                  ] as { key: keyof typeof DEFAULT_DELINQUENT_POLICY; label: string; desc: string }[]).map(item => (
+                    <label key={item.key} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
+                      <div className="flex-1 min-w-0 mr-4">
+                        <p className="text-sm font-medium text-slate-700">{item.label}</p>
+                        <p className="text-xs text-slate-400">{item.desc}</p>
+                      </div>
+                      <Toggle
+                        value={delinquentPolicy[item.key]}
+                        onChange={() => setDelinquentPolicy(p => ({ ...p, [item.key]: !p[item.key] }))}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Notificaciones */}
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Notificaciones al denegar</p>
+                <div className="space-y-3">
+                  {([
+                    { key: 'notifyResident', label: 'Notificar al residente',
+                      desc: 'Envía push al residente cuando se le deniega el acceso' },
+                    { key: 'notifyAdmin',    label: 'Notificar al administrador',
+                      desc: 'Envía push al ADMIN cuando un moroso intenta acceder' },
+                  ] as { key: keyof typeof DEFAULT_DELINQUENT_POLICY; label: string; desc: string }[]).map(item => (
+                    <label key={item.key} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors">
+                      <div className="flex-1 min-w-0 mr-4">
+                        <p className="text-sm font-medium text-slate-700">{item.label}</p>
+                        <p className="text-xs text-slate-400">{item.desc}</p>
+                      </div>
+                      <Toggle
+                        value={delinquentPolicy[item.key]}
+                        onChange={() => setDelinquentPolicy(p => ({ ...p, [item.key]: !p[item.key] }))}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                <p className="text-xs text-amber-700">
+                  <strong>Siempre permitido:</strong> La salida del fraccionamiento nunca se bloquea (seguridad). El guardia siempre puede hacer apertura manual.
+                </p>
               </div>
             </div>
           </div>

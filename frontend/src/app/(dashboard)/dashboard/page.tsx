@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { reportsApi, devicesApi, accessApi, paymentsApi, unitsApi } from '@/services/api';
+import { reportsApi, devicesApi, accessApi, paymentsApi, unitsApi, configApi } from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
 import StatCard from '@/components/ui/StatCard';
 import PageHeader from '@/components/ui/PageHeader';
@@ -79,6 +79,7 @@ export default function DashboardPage() {
   const [csvFileName, setCsvFileName] = useState('');
   const [csvLoading, setCsvLoading] = useState(false);
   const [csvResult, setCsvResult] = useState<BulkResult | null>(null);
+  const [csvMonthlyAmount, setCsvMonthlyAmount] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { role, user, tenantId } = useAuthStore();
@@ -166,29 +167,34 @@ export default function DashboardPage() {
     }
   };
 
-  // CSV: open modal and load units
+  // CSV: open modal and load units + monthly amount from config
   const openCsvModal = async () => {
     setCsvRows([]);
     setCsvFileName('');
     setCsvResult(null);
     setCsvLoading(false);
     setShowCsvModal(true);
-    if (csvUnits.length === 0) {
-      try {
-        const res: any = await unitsApi.list('');
-        setCsvUnits(res.data || []);
-      } catch { /* ignore */ }
-    }
+    try {
+      const [unitsRes, configRes]: any[] = await Promise.all([
+        csvUnits.length === 0 ? unitsApi.list('limit=9999&active=true') : Promise.resolve({ data: csvUnits }),
+        configApi.getTenant(),
+      ]);
+      if (csvUnits.length === 0) setCsvUnits(unitsRes.data || []);
+      const monthly = configRes?.data?.settings?.paymentConfig?.monthlyAmount || 0;
+      setCsvMonthlyAmount(monthly);
+    } catch { /* ignore */ }
   };
 
-  // CSV: download template
+  // CSV: download template con BOM para Excel y monto configurado
   const downloadTemplate = () => {
+    const BOM = '\uFEFF';
+    const amount = csvMonthlyAmount > 0 ? csvMonthlyAmount.toFixed(2) : '0.00';
     const rows = [['Fraccionamiento', 'Unidad', 'Monto', 'Pagado']];
     for (const u of csvUnits) {
-      rows.push([tenantName, u.identifier, '0.00', 'N']);
+      rows.push([tenantName, u.identifier, amount, 'N']);
     }
-    const csv = rows.map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const csv = BOM + rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -205,10 +211,15 @@ export default function DashboardPage() {
     setCsvResult(null);
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      const raw = ev.target?.result as string;
+      // Quitar BOM si existe
+      const text = raw.startsWith('\uFEFF') ? raw.slice(1) : raw;
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       if (lines.length < 2) return;
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      // Parsear columna respetando comillas dobles
+      const parseCols = (line: string) =>
+        line.split(',').map(c => c.trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+      const headers = parseCols(lines[0]).map(h => h.toLowerCase());
       const idxUnit = headers.findIndex(h => h.includes('unidad'));
       const idxMonto = headers.findIndex(h => h.includes('monto'));
       const idxPagado = headers.findIndex(h => h.includes('pagado'));
@@ -221,7 +232,7 @@ export default function DashboardPage() {
 
       const parsed: CsvRow[] = [];
       for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(',');
+        const cols = parseCols(lines[i]);
         const identifier = cols[idxUnit]?.trim() || '';
         const amount = parseFloat(cols[idxMonto]?.trim() || '0') || 0;
         const pagadoVal = (cols[idxPagado]?.trim() || 'N').toLowerCase();

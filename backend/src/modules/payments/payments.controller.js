@@ -50,8 +50,9 @@ async function reconcile(req, res) {
 }
 
 async function getDelinquent(req, res) {
-  const data = await svc.getDelinquentUnits(req.tenantId);
-  return success(res, data);
+  const { page, limit, skip } = parsePagination(req.query);
+  const { data, total } = await svc.getDelinquentUnits(req.tenantId, { skip, limit });
+  return paginated(res, data, total, page, limit);
 }
 
 async function bulkPayments(req, res) {

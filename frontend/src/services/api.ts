@@ -58,7 +58,7 @@ export const paymentsApi = {
   payments: (params?: string) => GET(`/payments/payments${params ? `?${params}` : ''}`),
   createPayment: (data: unknown) => POST('/payments/payments', data),
   reconcile: (paymentIds: string[]) => POST('/payments/reconcile', { paymentIds }),
-  delinquent: () => GET('/payments/delinquent'),
+  delinquent: (params?: string) => GET(`/payments/delinquent${params ? `?${params}` : ''}`),
   bulkPayments: (data: unknown) => POST('/payments/bulk', data),
 };
 
