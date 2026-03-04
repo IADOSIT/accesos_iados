@@ -137,13 +137,13 @@ function BroadcastSection({ onSent }: { onSent: () => void }) {
 
   useEffect(() => {
     if (target === 'USER') {
-      (usersApi.list() as Promise<{ data: { data: User[] } }>)
-        .then((r) => setUsers(r.data?.data ?? []))
+      (usersApi.list('limit=500') as Promise<{ data: User[] }>)
+        .then((r) => setUsers(r.data ?? []))
         .catch(() => {});
     }
     if (target === 'UNIT') {
-      (unitsApi.list() as Promise<{ data: { data: Unit[] } }>)
-        .then((r) => setUnits(r.data?.data ?? []))
+      (unitsApi.list('limit=9999') as Promise<{ data: Unit[] }>)
+        .then((r) => setUnits(r.data ?? []))
         .catch(() => {});
     }
   }, [target]);
@@ -282,8 +282,8 @@ function HistorySection() {
 
   const load = useCallback(() => {
     setLoading(true);
-    (notificationsApi.history('limit=50') as Promise<{ data: { data: NotifHistory[] } }>)
-      .then((r) => setHistory(r.data?.data ?? []))
+    (notificationsApi.history('limit=50') as Promise<{ data: NotifHistory[] }>)
+      .then((r) => setHistory(r.data ?? []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

@@ -25,6 +25,45 @@ function parseCSVLine(line: string): string[] {
 
 const LIMIT = 20;
 
+function UnitForm({ values, onChange, onSubmit, onClose, submitLabel }: {
+  values: typeof emptyForm;
+  onChange: (v: typeof emptyForm) => void;
+  onSubmit: (e: React.FormEvent) => void;
+  onClose: () => void;
+  submitLabel: string;
+}) {
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Identificador *</label>
+        <input className="input-field" value={values.identifier} onChange={(e) => onChange({ ...values, identifier: e.target.value })} required />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Bloque / Sección</label>
+        <input className="input-field" value={values.block} onChange={(e) => onChange({ ...values, block: e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Propietario</label>
+        <input className="input-field" value={values.ownerName} onChange={(e) => onChange({ ...values, ownerName: e.target.value })} />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
+          <input className="input-field" value={values.ownerPhone} onChange={(e) => onChange({ ...values, ownerPhone: e.target.value })} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+          <input className="input-field" type="email" value={values.ownerEmail} onChange={(e) => onChange({ ...values, ownerEmail: e.target.value })} />
+        </div>
+      </div>
+      <div className="flex justify-end gap-3 pt-2">
+        <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
+        <button type="submit" className="btn-primary">{submitLabel}</button>
+      </div>
+    </form>
+  );
+}
+
 export default function UnidadesPage() {
   const { user, role, tenantId } = useAuthStore();
   const tenantName = user?.tenants?.find((t: any) => t.tenantId === tenantId)?.tenantName || '-';
@@ -211,37 +250,6 @@ export default function UnidadesPage() {
       </div>
     )},
   ];
-
-  const UnitForm = ({ values, onChange, onSubmit, onClose, submitLabel }: any) => (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Identificador *</label>
-        <input className="input-field" value={values.identifier} onChange={(e) => onChange({ ...values, identifier: e.target.value })} required />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Bloque / Sección</label>
-        <input className="input-field" value={values.block} onChange={(e) => onChange({ ...values, block: e.target.value })} />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Propietario</label>
-        <input className="input-field" value={values.ownerName} onChange={(e) => onChange({ ...values, ownerName: e.target.value })} />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
-          <input className="input-field" value={values.ownerPhone} onChange={(e) => onChange({ ...values, ownerPhone: e.target.value })} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-          <input className="input-field" type="email" value={values.ownerEmail} onChange={(e) => onChange({ ...values, ownerEmail: e.target.value })} />
-        </div>
-      </div>
-      <div className="flex justify-end gap-3 pt-2">
-        <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
-        <button type="submit" className="btn-primary">{submitLabel}</button>
-      </div>
-    </form>
-  );
 
   return (
     <div>
