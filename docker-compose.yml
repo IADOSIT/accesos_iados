@@ -7,7 +7,7 @@ services:
     ports:
       - "3004:3001"
     environment:
-      - DATABASE_URL=postgresql://administrador:U191tl1ebFN2RJR0fld5QhC8U29AhdOQ@74.208.149.7:5432/iados_accesos?sslmode=disable
+      - DATABASE_URL=postgresql://administrador:U191tl1ebFN2RJR0fld5QhC8U29AhdOQ@postgres_local:5432/iados_accesos?sslmode=disable
       - JWT_SECRET=cambiar-en-produccion-clave-segura-min-32-chars
       - JWT_EXPIRES_IN=24h
       - JWT_REFRESH_EXPIRES_IN=7d
@@ -22,10 +22,11 @@ services:
     networks:
       - web_network
     healthcheck:
-      test: [ "CMD", "curl", "-f", "https://accesodigital.iados.mx/api/health" ]
+      test: [ "CMD", "curl", "-f", "http://localhost:3001/api/health" ]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 30s
 
   frontend:
     build:
