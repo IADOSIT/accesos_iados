@@ -50,11 +50,21 @@ async function update(tenantId, id, data) {
 
 async function checkDelinquency(tenantId) {
   const now = new Date();
+
+  // Leer días de gracia del tenant
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+  const settings = (tenant?.settings && typeof tenant.settings === 'object') ? tenant.settings : {};
+  const pc = (settings.paymentConfig && typeof settings.paymentConfig === 'object') ? settings.paymentConfig : {};
+  const graceDays = Number(pc.gracePeriodDays) || 0;
+
+  // Un cargo es moroso si su fecha de vencimiento + días de gracia ya expiró
+  const threshold = new Date(now.getTime() - graceDays * 24 * 60 * 60 * 1000);
+
   const units = await prisma.unit.findMany({ where: { tenantId, isActive: true } });
 
   for (const unit of units) {
     const pendingCharges = await prisma.charge.count({
-      where: { tenantId, unitId: unit.id, status: { in: ['PENDING', 'PARTIAL'] }, dueDate: { lt: now } },
+      where: { tenantId, unitId: unit.id, status: { in: ['PENDING', 'PARTIAL'] }, dueDate: { lt: threshold } },
     });
     const isDelinquent = pendingCharges > 0;
     if (unit.isDelinquent !== isDelinquent) {

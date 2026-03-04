@@ -52,8 +52,10 @@ interface CsvRow {
 
 interface BulkResult {
   total: number;
+  charged: number;
   paid: number;
   pending: number;
+  skipped: number;
   amount: number;
 }
 
@@ -516,7 +518,7 @@ export default function DashboardPage() {
           {csvRows.length > 0 && !csvResult && (
             <div>
               <p className="text-sm font-medium text-slate-700 mb-2">
-                Vista previa — {csvRows.filter(r => r.paid).length} pagos a registrar de {csvRows.length} unidades
+                Vista previa — {csvRows.length} unidades · {csvRows.filter(r => r.paid).length} pagados · {csvRows.filter(r => !r.paid).length} pendientes (se generará cargo)
               </p>
               <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-xl">
                 <table className="w-full text-xs">
@@ -548,17 +550,21 @@ export default function DashboardPage() {
           {/* Resultado */}
           {csvResult && (
             <div className="bg-emerald-50 rounded-xl p-4 space-y-2">
-              <p className="font-semibold text-emerald-800">✓ Pagos registrados exitosamente</p>
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div>
+              <p className="font-semibold text-emerald-800">✓ Layout procesado exitosamente</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                <div className="bg-white/70 rounded-xl p-2">
+                  <p className="text-lg font-bold text-blue-700">{csvResult.charged}</p>
+                  <p className="text-xs text-blue-600">Cargos creados</p>
+                </div>
+                <div className="bg-white/70 rounded-xl p-2">
                   <p className="text-lg font-bold text-emerald-700">{csvResult.paid}</p>
-                  <p className="text-xs text-emerald-600">Pagados</p>
+                  <p className="text-xs text-emerald-600">Pagos registrados</p>
                 </div>
-                <div>
-                  <p className="text-lg font-bold text-slate-600">{csvResult.pending}</p>
-                  <p className="text-xs text-slate-500">Pendientes</p>
+                <div className="bg-white/70 rounded-xl p-2">
+                  <p className="text-lg font-bold text-red-600">{csvResult.pending}</p>
+                  <p className="text-xs text-red-500">Cargos pendientes</p>
                 </div>
-                <div>
+                <div className="bg-white/70 rounded-xl p-2">
                   <p className="text-lg font-bold text-emerald-700">${csvResult.amount.toLocaleString()}</p>
                   <p className="text-xs text-emerald-600">Total cobrado</p>
                 </div>
@@ -574,7 +580,7 @@ export default function DashboardPage() {
             {!csvResult && (
               <button
                 onClick={handleBulkSubmit}
-                disabled={csvRows.filter(r => r.paid).length === 0 || csvLoading}
+                disabled={csvRows.length === 0 || csvLoading}
                 className="btn-primary flex items-center gap-2 disabled:opacity-50"
               >
                 {csvLoading ? (

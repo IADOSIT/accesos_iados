@@ -111,32 +111,67 @@ async function getDelinquentUnits(tenantId, { skip = 0, limit = 20 } = {}) {
 }
 
 async function bulkPayments(tenantId, { month, year, payments }) {
-  const paid = payments.filter(p => p.paid && Number(p.amount) > 0);
-  if (paid.length > 0) {
-    const ref = `CSV-${year}-${String(month).padStart(2, '0')}`;
-    await Promise.all(
-      paid.map(p =>
-        prisma.payment.create({
-          data: {
-            tenantId,
-            unitId: p.unitId,
-            amount: Number(p.amount),
-            method: 'TRANSFER',
-            reference: ref,
-            notes: 'Carga masiva CSV',
-            reconciled: false,
-          },
-        })
-      )
-    );
-    await unitsService.checkDelinquency(tenantId);
+  // Leer configuración del tenant para obtener día de cobro y concepto
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+  const settings = (tenant?.settings && typeof tenant.settings === 'object') ? tenant.settings : {};
+  const pc = (settings.paymentConfig && typeof settings.paymentConfig === 'object') ? settings.paymentConfig : {};
+  const dueDayOfMonth = Number(pc.dueDayOfMonth) || 5;
+  const paymentConcept = pc.paymentConcept || 'Cuota de mantenimiento';
+
+  const monthName = new Date(year, month - 1, 1)
+    .toLocaleDateString('es-MX', { month: 'long' });
+  const description = `${paymentConcept} — ${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${year}`;
+  const dueDate = new Date(year, month - 1, dueDayOfMonth);
+  const ref = `CSV-${year}-${String(month).padStart(2, '0')}`;
+
+  // Rango del mes para detectar cargo duplicado
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd   = new Date(year, month, 0, 23, 59, 59, 999);
+
+  let charged = 0, paid = 0, pending = 0, skipped = 0, totalAmount = 0;
+
+  for (const p of payments) {
+    const amount = Number(p.amount);
+    if (!p.unitId || amount <= 0) { skipped++; continue; }
+
+    // Verificar si ya existe un cargo mensual para este período
+    const existing = await prisma.charge.findFirst({
+      where: { tenantId, unitId: p.unitId, type: 'MONTHLY', dueDate: { gte: monthStart, lte: monthEnd } },
+    });
+
+    // Si ya está pagado, no duplicar
+    if (existing?.status === 'PAID') { skipped++; continue; }
+
+    let chargeId = existing?.id;
+
+    if (!existing) {
+      const charge = await prisma.charge.create({
+        data: { tenantId, unitId: p.unitId, type: 'MONTHLY', amount, description, dueDate, isRecurring: false, status: 'PENDING' },
+      });
+      chargeId = charge.id;
+      charged++;
+    }
+
+    if (p.paid) {
+      // Registrar pago y cerrar cargo
+      await prisma.payment.create({
+        data: { tenantId, unitId: p.unitId, chargeId, amount, method: 'TRANSFER', reference: ref, notes: 'Carga masiva CSV', reconciled: false },
+      });
+      await prisma.charge.update({
+        where: { id: chargeId },
+        data: { status: 'PAID', paidAmount: amount },
+      });
+      paid++;
+      totalAmount += amount;
+    } else {
+      pending++;
+    }
   }
-  return {
-    total: payments.length,
-    paid: paid.length,
-    pending: payments.length - paid.length,
-    amount: paid.reduce((s, p) => s + Number(p.amount), 0),
-  };
+
+  // Recalcular morosidad una sola vez al final
+  await unitsService.checkDelinquency(tenantId);
+
+  return { total: payments.length, charged, paid, pending, skipped, amount: totalAmount };
 }
 
 module.exports = { createCharge, createPayment, getCharges, getPayments, reconcile, getDelinquentUnits, bulkPayments };
