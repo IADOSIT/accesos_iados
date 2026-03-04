@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: iados-api
+    ports:
+      - "3004:3001"
+    environment:
+      - DATABASE_URL=postgresql://administrador:U191tl1ebFN2RJR0fld5QhC8U29AhdOQ@postgres_local:5432/iados_accesos?sslmode=disable
+      - JWT_SECRET=cambiar-en-produccion-clave-segura-min-32-chars
+      - JWT_EXPIRES_IN=24h
+      - JWT_REFRESH_EXPIRES_IN=7d
+      - PORT=3001
+      - NODE_ENV=development
+      - FRONTEND_URL=https://accesodigital.iados.mx
+      - MQTT_BROKER_URL=
+      - MQTT_USERNAME=
+      - MQTT_PASSWORD=
+      - ACCESS_COOLDOWN_SECONDS=30
+    restart: always
+    networks:
+      - web_network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:3001/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - NEXT_PUBLIC_API_URL=https://accesodigitalapi.iados.mx/api
+    container_name: iados-web
+    ports:
+      - "3005:3002"
+    environment:
+      - NEXT_PUBLIC_API_URL=https://accesodigitalapi.iados.mx/api
+      - API_URL=https://accesodigitalapi.iados.mx/api
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: always
+    networks:
+      - web_network
+
+networks:
+  web_network:
+    external: true
