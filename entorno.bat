@@ -10,9 +10,11 @@ set "ENV_MODE=GCP"
 if exist "%~dp0vps\env-mode.txt" for /f "usebackq tokens=1 delims= " %%M in ("%~dp0vps\env-mode.txt") do set "ENV_MODE=%%M"
 if "%ENV_MODE%"=="DNS" set "APP_API_URL=https://accesodigitalapi.iados.mx/api"
 if "%ENV_MODE%"=="DNS" set "APP_PORTAL_URL=https://accesodigital.iados.mx"
-if not "%ENV_MODE%"=="DNS" set "ENV_MODE=GCP"
-if not "%ENV_MODE%"=="DNS" set "APP_API_URL=http://34.71.132.26:3001/api"
-if not "%ENV_MODE%"=="DNS" set "APP_PORTAL_URL=http://34.71.132.26:3002"
+if "%ENV_MODE%"=="VPS" set "APP_API_URL=http://74.208.149.7:3001/api"
+if "%ENV_MODE%"=="VPS" set "APP_PORTAL_URL=http://74.208.149.7:3002"
+if not "%ENV_MODE%"=="DNS" if not "%ENV_MODE%"=="VPS" set "ENV_MODE=GCP"
+if not "%ENV_MODE%"=="DNS" if not "%ENV_MODE%"=="VPS" set "APP_API_URL=http://34.71.132.26:3001/api"
+if not "%ENV_MODE%"=="DNS" if not "%ENV_MODE%"=="VPS" set "APP_PORTAL_URL=http://34.71.132.26:3002"
 
 echo.
 echo  ================================================
@@ -776,16 +778,19 @@ echo.
 echo  Entorno actual: %ENV_MODE%
 echo.
 echo   GCP (desarrollo): http://34.71.132.26:3001/api
+echo   VPS (desarrollo): http://74.208.149.7:3001/api
 echo   DNS (produccion): https://accesodigitalapi.iados.mx/api
 echo.
 echo   1. Cambiar a DNS  (para compilar y subir a GitHub)
-echo   2. Cambiar a GCP  (para desarrollo local)
+echo   2. Cambiar a GCP  (para desarrollo local - VM Google Cloud)
+echo   3. Cambiar a VPS  (para desarrollo local - VPS 74.208.149.7)
 echo   0. Volver al menu
 echo.
 set "EOPT="
 set /p EOPT="  Selecciona: "
 if "%EOPT%"=="1" goto SWITCH_TO_DNS
 if "%EOPT%"=="2" goto SWITCH_TO_GCP
+if "%EOPT%"=="3" goto SWITCH_TO_VPS
 goto MENU
 
 :SWITCH_TO_DNS
@@ -793,14 +798,17 @@ echo DNS>"%~dp0vps\env-mode.txt"
 echo.
 echo  Actualizando workflow iOS...
 powershell -NoProfile -Command ^
-  "$f='%~dp0.github\workflows\build-ios.yml'; $c=[IO.File]::ReadAllText($f); $c=$c.Replace('http://34.71.132.26:3001/api','https://accesodigitalapi.iados.mx/api'); $c=$c.Replace('http://34.71.132.26:3002','https://accesodigital.iados.mx'); [IO.File]::WriteAllText($f,$c)"
+  "$f='%~dp0.github\workflows\build-ios.yml'; $c=[IO.File]::ReadAllText($f); $c=$c.Replace('http://34.71.132.26:3001/api','https://accesodigitalapi.iados.mx/api'); $c=$c.Replace('http://34.71.132.26:3002','https://accesodigital.iados.mx'); $c=$c.Replace('http://74.208.149.7:3001/api','https://accesodigitalapi.iados.mx/api'); $c=$c.Replace('http://74.208.149.7:3002','https://accesodigital.iados.mx'); [IO.File]::WriteAllText($f,$c)"
+echo  Actualizando PORTAL_URL en backend...
+powershell -NoProfile -Command ^
+  "$f='%~dp0backend\.env'; $c=[IO.File]::ReadAllText($f); $c=$c -replace 'PORTAL_URL=.*','PORTAL_URL=https://accesodigital.iados.mx'; [IO.File]::WriteAllText($f,$c)"
 echo.
 echo  [OK] Entorno cambiado a DNS (produccion)
 echo.
 echo  Recuerda:
 echo   1. Compila APK (op.16), Flutter web (op.20/21) o APK VPS (op.24)
 echo   2. git add + commit + push a GitHub
-echo   3. Vuelve a GCP con opcion 26 cuando termines
+echo   3. Vuelve a VPS o GCP con opcion 26 cuando termines
 echo.
 pause
 goto MENU
@@ -810,9 +818,27 @@ echo GCP>"%~dp0vps\env-mode.txt"
 echo.
 echo  Restaurando workflow iOS a GCP...
 powershell -NoProfile -Command ^
-  "$f='%~dp0.github\workflows\build-ios.yml'; $c=[IO.File]::ReadAllText($f); $c=$c.Replace('https://accesodigitalapi.iados.mx/api','http://34.71.132.26:3001/api'); $c=$c.Replace('https://accesodigital.iados.mx','http://34.71.132.26:3002'); [IO.File]::WriteAllText($f,$c)"
+  "$f='%~dp0.github\workflows\build-ios.yml'; $c=[IO.File]::ReadAllText($f); $c=$c.Replace('https://accesodigitalapi.iados.mx/api','http://34.71.132.26:3001/api'); $c=$c.Replace('https://accesodigital.iados.mx','http://34.71.132.26:3002'); $c=$c.Replace('http://74.208.149.7:3001/api','http://34.71.132.26:3001/api'); $c=$c.Replace('http://74.208.149.7:3002','http://34.71.132.26:3002'); [IO.File]::WriteAllText($f,$c)"
+echo  Actualizando PORTAL_URL en backend...
+powershell -NoProfile -Command ^
+  "$f='%~dp0backend\.env'; $c=[IO.File]::ReadAllText($f); $c=$c -replace 'PORTAL_URL=.*','PORTAL_URL=http://34.71.132.26:3002'; [IO.File]::WriteAllText($f,$c)"
 echo.
 echo  [OK] Entorno cambiado a GCP (desarrollo)
+echo.
+pause
+goto MENU
+
+:SWITCH_TO_VPS
+echo VPS>"%~dp0vps\env-mode.txt"
+echo.
+echo  Actualizando workflow iOS a VPS...
+powershell -NoProfile -Command ^
+  "$f='%~dp0.github\workflows\build-ios.yml'; $c=[IO.File]::ReadAllText($f); $c=$c.Replace('https://accesodigitalapi.iados.mx/api','http://74.208.149.7:3001/api'); $c=$c.Replace('https://accesodigital.iados.mx','http://74.208.149.7:3002'); $c=$c.Replace('http://34.71.132.26:3001/api','http://74.208.149.7:3001/api'); $c=$c.Replace('http://34.71.132.26:3002','http://74.208.149.7:3002'); [IO.File]::WriteAllText($f,$c)"
+echo  Actualizando PORTAL_URL en backend...
+powershell -NoProfile -Command ^
+  "$f='%~dp0backend\.env'; $c=[IO.File]::ReadAllText($f); $c=$c -replace 'PORTAL_URL=.*','PORTAL_URL=http://74.208.149.7:3002'; [IO.File]::WriteAllText($f,$c)"
+echo.
+echo  [OK] Entorno cambiado a VPS (74.208.149.7)
 echo.
 pause
 goto MENU
