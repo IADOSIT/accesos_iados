@@ -38,7 +38,7 @@ async function submitRequest(req, res) {
 async function getCurrentQR(req, res) {
   try {
     const qr = await svc.getOrCreateQR(req.tenantId);
-    const portalUrl = process.env.PORTAL_URL || 'http://34.71.132.26:3002';
+    const portalUrl = process.env.PORTAL_URL || 'http://74.208.149.7:3002';
     return success(res, { ...qr, url: `${portalUrl}/sv/${qr.code}` });
   } catch (err) {
     return error(res, err.message, err.status || 500);
@@ -48,7 +48,7 @@ async function getCurrentQR(req, res) {
 async function regenerateQR(req, res) {
   try {
     const qr = await svc.rotateQR(req.tenantId);
-    const portalUrl = process.env.PORTAL_URL || 'http://34.71.132.26:3002';
+    const portalUrl = process.env.PORTAL_URL || 'http://74.208.149.7:3002';
     return success(res, { ...qr, url: `${portalUrl}/sv/${qr.code}` }, 'QR regenerado');
   } catch (err) {
     return error(res, err.message, err.status || 500);

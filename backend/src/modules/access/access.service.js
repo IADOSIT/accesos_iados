@@ -233,7 +233,7 @@ async function createQuickQr(tenantId, userId, data) {
     },
   });
 
-  const portalUrl = process.env.PORTAL_URL || 'http://34.71.132.26:3002';
+  const portalUrl = process.env.PORTAL_URL || 'http://74.208.149.7:3002';
 
   return { ...qr, externalUrl: `${portalUrl}/qr/${qr.code}` };
 }

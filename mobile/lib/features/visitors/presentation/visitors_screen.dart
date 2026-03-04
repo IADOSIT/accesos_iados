@@ -12,7 +12,7 @@ import '../../../shared/providers/auth_provider.dart';
 import '../../../shared/providers/tenant_config_provider.dart';
 
 const String _portalUrl = String.fromEnvironment(
-    'PORTAL_URL', defaultValue: 'http://34.71.132.26:3002');
+    'PORTAL_URL', defaultValue: 'http://74.208.149.7:3002');
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
