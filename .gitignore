@@ -12,3 +12,6 @@ vps/backend.env.production
 # Firebase service account keys — NUNCA subir al repo
 *firebase-adminsdk*.json
 firebase-key.json
+
+# Docker compose de producción — tiene credenciales, se maneja en VPS
+docker-compose.yml
