@@ -24,7 +24,7 @@ jobs:
           cache: true
 
       - name: Instalar dependencias
-        run: flutter pub get
+        run: flutter pub upgrade
 
       - name: Actualizar repo de CocoaPods
         run: |
@@ -36,6 +36,10 @@ jobs:
           flutter build ios --release --no-codesign \
             --dart-define=API_URL=https://accesodigitalapi.iados.mx/api \
             --dart-define=PORTAL_URL=https://accesodigital.iados.mx
+        env:
+          CODE_SIGN_IDENTITY: ""
+          CODE_SIGNING_REQUIRED: "NO"
+          CODE_SIGNING_ALLOWED: "NO"
 
       - name: Empacar como .ipa
         run: |
