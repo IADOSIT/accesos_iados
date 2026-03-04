@@ -6,8 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'core/network/api_client.dart';
+import 'core/services/local_notif_service.dart';
 import 'shared/widgets/service_request_dialog.dart';
 import 'shared/widgets/panic_alert_dialog.dart';
 import 'features/dashboard/presentation/dashboard_screen.dart';
@@ -118,6 +120,30 @@ class _MainShellState extends ConsumerState<_MainShell> {
   void initState() {
     super.initState();
     if (!kIsWeb) {
+      // Escuchar taps de notificación local (background → fullScreenIntent tappeado)
+      localNotifTapController.stream.listen((data) {
+        if (data['type'] == 'SERVICE_REQUEST' && mounted) {
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showServiceRequestAlert(data);
+          });
+        }
+      });
+
+      // App lanzada desde notificación local (terminated → tap)
+      localNotifPlugin.getNotificationAppLaunchDetails().then((details) {
+        if (details?.didNotificationLaunchApp != true) return;
+        final payload = details?.notificationResponse?.payload;
+        if (payload == null) return;
+        try {
+          final data = Map<String, dynamic>.from(jsonDecode(payload) as Map);
+          if (data['type'] == 'SERVICE_REQUEST') {
+            SchedulerBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _showServiceRequestAlert(data);
+            });
+          }
+        } catch (_) {}
+      });
+
       try {
         // Foreground: app abierta
         FirebaseMessaging.onMessage.listen((message) {

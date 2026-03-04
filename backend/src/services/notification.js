@@ -109,12 +109,45 @@ async function _sendUrgent(fcmToken, title, body, data) {
         notification: { sound: 'default', channelId: 'panic' },
       },
       apns: {
-        payload: { aps: { sound: 'default', badge: 1 } },
-        headers: { 'apns-priority': '10' },
+        payload: { aps: { sound: 'default', badge: 1, 'interruption-level': 'time-sensitive' } },
+        headers: { 'apns-priority': '10', 'apns-push-type': 'alert' },
       },
     });
   } catch (err) {
     console.error('[FCM] Error enviando push urgente:', err.message);
+  }
+}
+
+// Envío de SERVICE_REQUEST: data-only en Android (dispara onBackgroundMessage → fullScreenIntent)
+// iOS recibe alerta nativa via APNS con interruption-level time-sensitive
+async function _sendServiceRequestPush(fcmToken, title, body, data) {
+  if (!messaging || !fcmToken) return;
+  try {
+    const stringData = {
+      ...(data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {}),
+      _title: title,
+      _body: body,
+    };
+    await messaging.send({
+      token: fcmToken,
+      // Sin notification field → Android: data-only → _fcmBackgroundHandler se invoca
+      data: stringData,
+      android: { priority: 'high' },
+      apns: {
+        // iOS: alerta nativa visible en pantalla de bloqueo
+        payload: {
+          aps: {
+            alert: { title, body },
+            sound: 'default',
+            badge: 1,
+            'interruption-level': 'time-sensitive',
+          },
+        },
+        headers: { 'apns-priority': '10', 'apns-push-type': 'alert' },
+      },
+    });
+  } catch (err) {
+    console.error('[FCM] Error enviando SERVICE_REQUEST push:', err.message);
   }
 }
 
@@ -156,4 +189,23 @@ function sendUrgentToUnit(tenantId, unitId, type, title, body, data) {
   })().catch(err => console.error('[FCM] sendUrgentToUnit error:', err.message));
 }
 
-module.exports = { sendToUser, sendToUnit, sendToRole, sendToAll, sendUrgentToRole, sendUrgentToUnit };
+// Envía SERVICE_REQUEST a todos los residentes de una unidad con push urgente de pantalla completa
+function sendServiceRequestToUnit(tenantId, unitId, type, title, body, data) {
+  (async () => {
+    const residents = await prisma.userTenant.findMany({
+      where: { tenantId, unitId, isActive: true },
+      select: { userId: true },
+    });
+    const userIds = [...new Set(residents.map(r => r.userId))];
+    const users = await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, fcmToken: true },
+    });
+    await Promise.all(users.flatMap(u => [
+      _sendServiceRequestPush(u.fcmToken, title, body, data),
+      _save(tenantId, u.id, type, title, body, data),
+    ]));
+  })().catch(err => console.error('[FCM] sendServiceRequestToUnit error:', err.message));
+}
+
+module.exports = { sendToUser, sendToUnit, sendToRole, sendToAll, sendUrgentToRole, sendUrgentToUnit, sendServiceRequestToUnit };

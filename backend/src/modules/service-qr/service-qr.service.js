@@ -119,9 +119,9 @@ async function submitRequest(tenantId, qrId, data) {
     tenantId,
   };
 
-  // Notificar al residente de la unidad (siempre, urgente)
+  // Notificar al residente: push full-screen (data-only Android + APNS iOS time-sensitive)
   if (unitId) {
-    notif.sendUrgentToUnit(tenantId, unitId, 'SERVICE_REQUEST', title, body, fcmData);
+    notif.sendServiceRequestToUnit(tenantId, unitId, 'SERVICE_REQUEST', title, body, fcmData);
   }
 
   // Notificar a GUARD y ADMIN (siempre, urgente)
