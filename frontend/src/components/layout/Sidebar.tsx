@@ -20,6 +20,8 @@ import {
   ShieldCheckIcon,
   BuildingOffice2Icon,
   BellIcon,
+  Bars3Icon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
 
 const adminNav = [
@@ -49,6 +51,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { user, role, tenantId, setTenant, logout } = useAuthStore();
   const [allTenants, setAllTenants] = useState<{ id: string; name: string }[]>([]);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const navigation = role === 'GUARD' ? guardNav : adminNav;
   const isSuperAdmin = user?.isSuperAdmin;
@@ -61,6 +64,9 @@ export default function Sidebar() {
       .catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Cerrar menú al navegar
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
+
   // Opciones del switcher: SuperAdmin ve todos; ADMIN ve sus tenants
   const switcherOptions = isSuperAdmin
     ? allTenants
@@ -71,16 +77,52 @@ export default function Sidebar() {
     : (user?.tenants?.find(t => t.tenantId === tenantId)?.tenantName || '—');
 
   return (
-    <aside className="fixed inset-y-0 left-0 w-64 glass border-r border-white/20 z-40 flex flex-col">
-      {/* Logo */}
-      <div className="px-6 pt-6 pb-5 border-b border-white/10 flex flex-col items-center gap-2">
+    <>
+      {/* Topbar móvil — solo visible en < md */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-14 z-50 glass border-b border-white/20 flex items-center px-4 gap-3">
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="p-1.5 rounded-lg hover:bg-white/40 transition-colors"
+          aria-label="Abrir menú"
+        >
+          <Bars3Icon className="w-6 h-6 text-slate-700" />
+        </button>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo3_ia2.png" alt="iaDoS" className="w-36 h-auto" />
-        <div className="text-center">
-          <h1 className="font-bold text-base text-slate-800 leading-tight">Acceso Digital</h1>
-          <p className="text-xs text-emerald-600 font-medium">iaDoS</p>
+        <img src="/logo3_ia2.png" alt="iaDoS" className="w-8 h-auto" />
+        <div>
+          <p className="text-sm font-bold text-slate-800 leading-tight">Acceso Digital</p>
+          <p className="text-[10px] text-emerald-600 font-medium leading-tight">iaDoS</p>
         </div>
       </div>
+
+      {/* Backdrop — solo en móvil cuando el menú está abierto */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/40"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      <aside className={clsx(
+        'fixed inset-y-0 left-0 w-64 glass border-r border-white/20 z-50 flex flex-col transition-transform duration-300',
+        mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+      )}>
+        {/* Logo — horizontal en desktop, con botón cerrar en móvil */}
+        <div className="px-4 pt-4 pb-4 border-b border-white/10 flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo3_ia2.png" alt="iaDoS" className="w-10 h-auto shrink-0" />
+          <div className="flex-1 min-w-0">
+            <h1 className="font-bold text-sm text-slate-800 leading-tight">Acceso Digital</h1>
+            <p className="text-xs text-emerald-600 font-medium">iaDoS</p>
+          </div>
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="md:hidden p-1 rounded-lg hover:bg-white/40 transition-colors shrink-0"
+            aria-label="Cerrar menú"
+          >
+            <XMarkIcon className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
 
       {/* Navegación */}
       <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
@@ -189,6 +231,7 @@ export default function Sidebar() {
           Cerrar sesión
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
