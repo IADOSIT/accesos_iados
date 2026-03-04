@@ -22,18 +22,22 @@ services:
     networks:
       - web_network
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:3001/api/health" ]
+      test: [ "CMD", "curl", "-f", "https://accesodigital.iados.mx/api/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - NEXT_PUBLIC_API_URL=https://accesodigitalapi.iados.mx/api
     container_name: iados-web
     ports:
       - "3005:3002"
     environment:
       - NEXT_PUBLIC_API_URL=https://accesodigitalapi.iados.mx/api
+      - API_URL=https://accesodigitalapi.iados.mx/api
     depends_on:
       backend:
         condition: service_healthy
