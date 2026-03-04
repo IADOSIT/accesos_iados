@@ -62,7 +62,7 @@ class DashboardScreen extends ConsumerWidget {
         slivers: [
           // App Bar personalizado
           SliverAppBar(
-            expandedHeight: 148,
+            expandedHeight: 130,
             floating: false,
             pinned: true,
             backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -76,7 +76,7 @@ class DashboardScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Fila: Logo + nombre fraccionamiento + badge rol
+                    // Fila 1: Logo + nombre completo del fraccionamiento
                     Row(
                       children: [
                         const _HexLogoSmall(),
@@ -91,40 +91,34 @@ class DashboardScreen extends ConsumerWidget {
                               letterSpacing: -0.3,
                             ),
                             maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                            overflow: TextOverflow.visible,
+                            softWrap: true,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        _RoleBadge(auth: auth, ref: ref),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    // Saludo
-                    Text(
-                      _greeting(),
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                      ),
-                    ),
-                    const SizedBox(height: 1),
-                    // Versión
-                    Text(
-                      'v1.0.0',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    // Nombre del usuario
-                    Text(
-                      auth.displayName.isNotEmpty ? auth.displayName : '',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                      ),
+                    const SizedBox(height: 6),
+                    // Fila 2: Saludo + versión | Menú usuario
+                    Row(
+                      children: [
+                        Text(
+                          _greeting(),
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'v1.0.0',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                          ),
+                        ),
+                        const Spacer(),
+                        _RoleBadge(auth: auth, ref: ref),
+                      ],
                     ),
                   ],
                 ),
@@ -283,7 +277,7 @@ class _HexLogoSmall extends StatelessWidget {
   const _HexLogoSmall();
   @override
   Widget build(BuildContext context) =>
-      const IadosLogo(size: 42, showText: false);
+      const IadosLogo(size: 46, showText: false);
 }
 
 class _RoleBadge extends StatelessWidget {
