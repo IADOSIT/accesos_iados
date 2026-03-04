@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 
 interface Unit {
   id: string;
@@ -72,6 +72,7 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const exitQrCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
@@ -210,7 +211,7 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
           <div className="mt-5 flex items-center justify-center gap-2 opacity-40">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo3_ia2.png" alt="iaDoS" className="h-5 w-auto" />
-            <span className="text-xs text-slate-500">Acceso Digital · iaDoS</span>
+            <span className="text-xs text-slate-500">Acceso Digital · <a href="https://iados.mx" target="_blank" rel="noopener noreferrer" className="text-emerald-500 font-medium hover:underline">iaDoS.mx</a></span>
           </div>
         </div>
       </div>
@@ -260,6 +261,8 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
                       <QRCodeSVG value={statusData.exitQrCode!} size={160} level="M" />
                     </div>
                   </div>
+                  {/* Canvas oculto para descarga en alta resolución */}
+                  <QRCodeCanvas ref={exitQrCanvasRef} value={statusData.exitQrCode!} size={400} level="M" style={{ display: 'none' }} />
                   <p className="font-mono text-xs text-slate-400 text-center tracking-widest mb-1">
                     {statusData.exitQrCode}
                   </p>
@@ -268,6 +271,19 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
                       Válido hasta {exitExpires}
                     </p>
                   )}
+                  <button
+                    onClick={() => {
+                      const canvas = exitQrCanvasRef.current;
+                      if (!canvas) return;
+                      const link = document.createElement('a');
+                      link.download = `QR-salida-${statusData.exitQrCode}.png`;
+                      link.href = canvas.toDataURL('image/png');
+                      link.click();
+                    }}
+                    className="mt-3 w-full py-2.5 rounded-xl font-semibold text-sm text-white bg-emerald-500 hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    ⬇ Descargar QR como imagen
+                  </button>
                   <div className="mt-2 bg-amber-50 rounded-xl px-3 py-2 text-center">
                     <p className="text-amber-700 text-xs">
                       Presenta este QR al salir — uso único
@@ -280,7 +296,7 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
             <div className="border-t border-slate-100 px-6 py-3 flex items-center justify-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/logo3_ia2.png" alt="iaDoS" className="h-4 w-auto opacity-50" />
-              <span className="text-xs text-slate-400">Acceso Digital · iaDoS</span>
+              <span className="text-xs text-slate-400">Acceso Digital · <a href="https://iados.mx" target="_blank" rel="noopener noreferrer" className="text-emerald-500 font-medium hover:underline">iaDoS.mx</a></span>
             </div>
           </div>
         </div>
@@ -299,7 +315,7 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
           <div className="mt-5 flex items-center justify-center gap-2 opacity-40">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo3_ia2.png" alt="iaDoS" className="h-5 w-auto" />
-            <span className="text-xs text-slate-500">Acceso Digital · iaDoS</span>
+            <span className="text-xs text-slate-500">Acceso Digital · <a href="https://iados.mx" target="_blank" rel="noopener noreferrer" className="text-emerald-500 font-medium hover:underline">iaDoS.mx</a></span>
           </div>
         </div>
       </div>
@@ -334,7 +350,7 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
           <div className="flex items-center justify-center gap-2 opacity-40">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo3_ia2.png" alt="iaDoS" className="h-5 w-auto" />
-            <span className="text-xs text-slate-500">Acceso Digital · iaDoS</span>
+            <span className="text-xs text-slate-500">Acceso Digital · <a href="https://iados.mx" target="_blank" rel="noopener noreferrer" className="text-emerald-500 font-medium hover:underline">iaDoS.mx</a></span>
           </div>
         </div>
       </div>
@@ -464,7 +480,7 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
           <div className="border-t border-slate-100 px-6 py-3 flex items-center justify-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo3_ia2.png" alt="iaDoS" className="h-4 w-auto opacity-50" />
-            <span className="text-xs text-slate-400">Acceso Digital · iaDoS</span>
+            <span className="text-xs text-slate-400">Acceso Digital · <a href="https://iados.mx" target="_blank" rel="noopener noreferrer" className="text-emerald-500 font-medium hover:underline">iaDoS.mx</a></span>
           </div>
         </div>
       </div>
