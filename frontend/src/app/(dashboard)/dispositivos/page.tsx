@@ -9,6 +9,47 @@ import Modal from '@/components/ui/Modal';
 
 const emptyForm = { name: '', type: 'GATE', accessType: 'GENERAL', mqttTopic: '', location: '' };
 
+function DeviceForm({ values, onChange, onSubmit, onClose, submitLabel }: any) {
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Nombre *</label>
+        <input className="input-field" value={values.name} onChange={(e) => onChange({ ...values, name: e.target.value })} required />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Tipo</label>
+          <select className="input-field" value={values.type} onChange={(e) => onChange({ ...values, type: e.target.value })}>
+            <option value="GATE">Portón</option>
+            <option value="DOOR">Puerta</option>
+            <option value="BARRIER">Pluma</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700 mb-1">Acceso para</label>
+          <select className="input-field" value={values.accessType} onChange={(e) => onChange({ ...values, accessType: e.target.value })}>
+            <option value="GENERAL">General</option>
+            <option value="RESIDENT">Residentes</option>
+            <option value="VISITOR">Visitas</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Ubicación</label>
+        <input className="input-field" value={values.location} onChange={(e) => onChange({ ...values, location: e.target.value })} />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-slate-700 mb-1">MQTT Topic</label>
+        <input className="input-field" value={values.mqttTopic} onChange={(e) => onChange({ ...values, mqttTopic: e.target.value })} placeholder="devices/porton-principal/cmd" />
+      </div>
+      <div className="flex justify-end gap-3 pt-2">
+        <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
+        <button type="submit" className="btn-primary">{submitLabel}</button>
+      </div>
+    </form>
+  );
+}
+
 export default function DispositivosPage() {
   const { tenantId } = useAuthStore();
   const [devices, setDevices] = useState<any[]>([]);
@@ -28,6 +69,16 @@ export default function DispositivosPage() {
   };
 
   useEffect(() => { load(); }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Polling de estado cada 10s (ONLINE/OFFLINE en tiempo real)
+  useEffect(() => {
+    const id = setInterval(() => {
+      devicesApi.list()
+        .then((res: any) => setDevices(Array.isArray(res.data) ? res.data : (res.data || [])))
+        .catch(() => {});
+    }, 10000);
+    return () => clearInterval(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,45 +162,6 @@ export default function DispositivosPage() {
       </div>
     )},
   ];
-
-  const DeviceForm = ({ values, onChange, onSubmit, onClose, submitLabel }: any) => (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Nombre *</label>
-        <input className="input-field" value={values.name} onChange={(e) => onChange({ ...values, name: e.target.value })} required />
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Tipo</label>
-          <select className="input-field" value={values.type} onChange={(e) => onChange({ ...values, type: e.target.value })}>
-            <option value="GATE">Portón</option>
-            <option value="DOOR">Puerta</option>
-            <option value="BARRIER">Pluma</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Acceso para</label>
-          <select className="input-field" value={values.accessType} onChange={(e) => onChange({ ...values, accessType: e.target.value })}>
-            <option value="GENERAL">General</option>
-            <option value="RESIDENT">Residentes</option>
-            <option value="VISITOR">Visitas</option>
-          </select>
-        </div>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Ubicación</label>
-        <input className="input-field" value={values.location} onChange={(e) => onChange({ ...values, location: e.target.value })} />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">MQTT Topic</label>
-        <input className="input-field" value={values.mqttTopic} onChange={(e) => onChange({ ...values, mqttTopic: e.target.value })} placeholder="devices/porton-principal/cmd" />
-      </div>
-      <div className="flex justify-end gap-3 pt-2">
-        <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
-        <button type="submit" className="btn-primary">{submitLabel}</button>
-      </div>
-    </form>
-  );
 
   return (
     <div>

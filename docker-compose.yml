@@ -14,7 +14,7 @@ services:
       - PORT=3001
       - NODE_ENV=development
       - FRONTEND_URL=https://accesodigital.iados.mx
-      - MQTT_BROKER_URL=mqtt://localhost:1883
+      - MQTT_BROKER_URL=mqtt://74.208.149.7:1883
       - MQTT_USERNAME=iados
       - MQTT_PASSWORD=iados22...
       - ACCESS_COOLDOWN_SECONDS=30
