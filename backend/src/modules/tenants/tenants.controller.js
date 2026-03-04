@@ -65,7 +65,34 @@ async function getStats(req, res) {
   return success(res, stats);
 }
 
-module.exports = { create, createWithAdmin, findAll, findById, update, deactivate, activate, hardDelete, getStats };
+async function purgePreview(req, res) {
+  try {
+    const preview = await svc.getPurgePreview(req.params.id);
+    return success(res, preview);
+  } catch (err) {
+    return error(res, err.message, err.status || 500);
+  }
+}
+
+async function purge(req, res) {
+  try {
+    const { operations } = req.body;
+    if (!Array.isArray(operations) || operations.length === 0) {
+      return error(res, 'Selecciona al menos una operación', 400);
+    }
+    const VALID_OPS = ['access_logs', 'qr_codes', 'notifications', 'service_requests', 'panic_alerts', 'audit_logs', 'payments', 'charges', 'residents', 'units'];
+    const invalid = operations.filter(op => !VALID_OPS.includes(op));
+    if (invalid.length > 0) {
+      return error(res, `Operaciones inválidas: ${invalid.join(', ')}`, 400);
+    }
+    const result = await svc.purgeData(req.params.id, operations);
+    return success(res, result, 'Datos purgados correctamente');
+  } catch (err) {
+    return error(res, err.message, err.status || 500);
+  }
+}
+
+module.exports = { create, createWithAdmin, findAll, findById, update, deactivate, activate, hardDelete, getStats, purgePreview, purge };
 
 async function hardDelete(req, res) {
   try {

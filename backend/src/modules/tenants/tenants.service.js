@@ -106,7 +106,84 @@ async function getStats() {
   return { totalTenants, totalUsers, totalUnits, totalDevices };
 }
 
-module.exports = { create, createWithAdmin, findAll, findById, update, deactivate, activate, hardDelete, getStats };
+async function getPurgePreview(tenantId) {
+  const [accessLogs, payments, charges, qrCodes, notifications, serviceRequests, auditLogs, panicAlerts, units, residents] = await Promise.all([
+    prisma.accessLog.count({ where: { tenantId } }),
+    prisma.payment.count({ where: { tenantId } }),
+    prisma.charge.count({ where: { tenantId } }),
+    prisma.qRCode.count({ where: { tenantId } }),
+    prisma.notification.count({ where: { tenantId } }),
+    prisma.serviceRequest.count({ where: { tenantId } }),
+    prisma.auditLog.count({ where: { tenantId } }),
+    prisma.panicAlert.count({ where: { tenantId } }),
+    prisma.unit.count({ where: { tenantId } }),
+    prisma.userTenant.count({ where: { tenantId, role: 'RESIDENT' } }),
+  ]);
+  return { accessLogs, payments, charges, qrCodes, notifications, serviceRequests, auditLogs, panicAlerts, units, residents };
+}
+
+async function purgeData(tenantId, operations) {
+  // Verify tenant exists
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+  if (!tenant) throw { status: 404, message: 'Fraccionamiento no encontrado' };
+
+  return prisma.$transaction(async (tx) => {
+    const deleted = {};
+
+    // Independent tables (no hard FK to Unit)
+    if (operations.includes('service_requests')) {
+      const r = await tx.serviceRequest.deleteMany({ where: { tenantId } });
+      deleted.serviceRequests = r.count;
+    }
+    if (operations.includes('notifications')) {
+      const r = await tx.notification.deleteMany({ where: { tenantId } });
+      deleted.notifications = r.count;
+    }
+    if (operations.includes('audit_logs')) {
+      const r = await tx.auditLog.deleteMany({ where: { tenantId } });
+      deleted.auditLogs = r.count;
+    }
+    if (operations.includes('panic_alerts')) {
+      const r = await tx.panicAlert.deleteMany({ where: { tenantId } });
+      deleted.panicAlerts = r.count;
+    }
+    if (operations.includes('access_logs')) {
+      const r = await tx.accessLog.deleteMany({ where: { tenantId } });
+      deleted.accessLogs = r.count;
+    }
+
+    // Payments → Charges → QR → Residents must come before Units (hard FK)
+    const needPayments  = operations.includes('payments')  || operations.includes('units');
+    const needCharges   = operations.includes('charges')   || operations.includes('units');
+    const needQr        = operations.includes('qr_codes')  || operations.includes('units');
+    const needResidents = operations.includes('residents') || operations.includes('units');
+
+    if (needPayments) {
+      const r = await tx.payment.deleteMany({ where: { tenantId } });
+      deleted.payments = r.count;
+    }
+    if (needCharges) {
+      const r = await tx.charge.deleteMany({ where: { tenantId } });
+      deleted.charges = r.count;
+    }
+    if (needQr) {
+      const r = await tx.qRCode.deleteMany({ where: { tenantId } });
+      deleted.qrCodes = r.count;
+    }
+    if (needResidents) {
+      const r = await tx.userTenant.deleteMany({ where: { tenantId, role: 'RESIDENT' } });
+      deleted.residents = r.count;
+    }
+    if (operations.includes('units')) {
+      const r = await tx.unit.deleteMany({ where: { tenantId } });
+      deleted.units = r.count;
+    }
+
+    return deleted;
+  }, { timeout: 30000 });
+}
+
+module.exports = { create, createWithAdmin, findAll, findById, update, deactivate, activate, hardDelete, getStats, getPurgePreview, purgeData };
 
 async function hardDelete(id) {
   try {

@@ -73,6 +73,8 @@ export const tenantsApi = {
   activate: (id: string) => POST(`/tenants/${id}/activate`, {}),
   remove: (id: string) => DELETE(`/tenants/${id}`),
   stats: () => GET('/tenants/stats'),
+  purgePreview: (id: string) => GET(`/tenants/${id}/purge/preview`),
+  purge: (id: string, operations: string[]) => POST(`/tenants/${id}/purge`, { operations }),
 };
 
 // ============ CONFIGURACION ============

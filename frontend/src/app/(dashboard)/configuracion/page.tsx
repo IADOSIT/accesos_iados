@@ -191,15 +191,16 @@ const STATUS_BADGE: Record<IntegrationStatus, { label: string; cls: string }> = 
 };
 
 // ── Tabs ────────────────────────────────────────────────────────
-type ConfigTab = 'cuenta' | 'fraccionamiento' | 'cobros' | 'emergencias' | 'servicios' | 'integraciones';
+type ConfigTab = 'cuenta' | 'fraccionamiento' | 'cobros' | 'emergencias' | 'servicios' | 'integraciones' | 'mantenimiento';
 
-const TABS: { key: ConfigTab; label: string }[] = [
+const TABS: { key: ConfigTab; label: string; superAdminOnly?: boolean }[] = [
   { key: 'cuenta',          label: 'Cuenta' },
   { key: 'fraccionamiento', label: 'Fraccionamiento' },
   { key: 'cobros',          label: 'Cobros' },
   { key: 'emergencias',     label: 'Emergencias' },
   { key: 'servicios',       label: 'Servicios QR' },
   { key: 'integraciones',   label: 'Integraciones' },
+  { key: 'mantenimiento',   label: '🔧 Mantenimiento', superAdminOnly: true },
 ];
 
 // ── QrPosterModal ───────────────────────────────────────────────────────────
@@ -590,6 +591,274 @@ function Toggle({ value, onChange }: { value: boolean; onChange: () => void }) {
   );
 }
 
+// ── MantenimientoTab ───────────────────────────────────────────
+
+type PurgePreview = {
+  accessLogs: number; payments: number; charges: number; qrCodes: number;
+  notifications: number; serviceRequests: number; auditLogs: number;
+  panicAlerts: number; units: number; residents: number;
+};
+
+type PurgeOpKey = 'access_logs' | 'qr_codes' | 'notifications' | 'service_requests' |
+  'panic_alerts' | 'audit_logs' | 'payments' | 'charges' | 'residents' | 'units';
+
+const PURGE_OPS: {
+  key: PurgeOpKey; label: string; previewKey: keyof PurgePreview;
+  group: 'operativo' | 'financiero' | 'estructura'; note?: string;
+}[] = [
+  { key: 'access_logs',      label: 'Bitácora de accesos',    previewKey: 'accessLogs',      group: 'operativo' },
+  { key: 'qr_codes',         label: 'Códigos QR',             previewKey: 'qrCodes',         group: 'operativo' },
+  { key: 'notifications',    label: 'Notificaciones',         previewKey: 'notifications',   group: 'operativo' },
+  { key: 'service_requests', label: 'Solicitudes de servicio',previewKey: 'serviceRequests', group: 'operativo' },
+  { key: 'panic_alerts',     label: 'Alertas de pánico',      previewKey: 'panicAlerts',     group: 'operativo' },
+  { key: 'audit_logs',       label: 'Registro de auditoría',  previewKey: 'auditLogs',       group: 'operativo' },
+  { key: 'payments',         label: 'Pagos',                  previewKey: 'payments',        group: 'financiero' },
+  { key: 'charges',          label: 'Cargos / Cuotas',        previewKey: 'charges',         group: 'financiero' },
+  { key: 'residents',        label: 'Residentes (membresías)',previewKey: 'residents',       group: 'estructura',
+    note: 'Desvincula usuarios RESIDENT del fraccionamiento' },
+  { key: 'units',            label: 'Unidades',               previewKey: 'units',           group: 'estructura',
+    note: 'Incluye automáticamente: pagos, cargos, QR y residentes' },
+];
+
+const PURGE_GROUPS: { key: 'operativo' | 'financiero' | 'estructura'; label: string; color: string }[] = [
+  { key: 'operativo',  label: 'Datos operativos',  color: 'blue' },
+  { key: 'financiero', label: 'Datos financieros', color: 'amber' },
+  { key: 'estructura', label: 'Estructura',         color: 'red' },
+];
+
+const FORCED_BY_UNITS: PurgeOpKey[] = ['payments', 'charges', 'qr_codes', 'residents'];
+
+function MantenimientoTab({ allTenants }: { allTenants: { id: string; name: string }[] }) {
+  const [selectedId, setSelectedId] = useState('');
+  const [preview, setPreview] = useState<PurgePreview | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [selected, setSelected] = useState<Set<PurgeOpKey>>(new Set());
+  const [confirmName, setConfirmName] = useState('');
+  const [showDialog, setShowDialog] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState<Record<string, number> | null>(null);
+  const [err, setErr] = useState('');
+
+  const selectedTenant = allTenants.find(t => t.id === selectedId);
+
+  useEffect(() => {
+    if (!selectedId) { setPreview(null); return; }
+    setLoadingPreview(true); setPreview(null); setResult(null); setErr('');
+    tenantsApi.purgePreview(selectedId)
+      .then((res: any) => setPreview(res.data))
+      .catch(() => setErr('No se pudo cargar el preview'))
+      .finally(() => setLoadingPreview(false));
+  }, [selectedId]);
+
+  const isForced = (key: PurgeOpKey) => selected.has('units') && (FORCED_BY_UNITS as string[]).includes(key);
+
+  const toggle = (key: PurgeOpKey) => {
+    if (isForced(key)) return;
+    setSelected(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next; });
+  };
+
+  const effectiveSelected = () => {
+    const ops = new Set(selected);
+    if (ops.has('units')) FORCED_BY_UNITS.forEach(k => ops.add(k));
+    return ops;
+  };
+
+  const handlePurge = async () => {
+    if (!selectedId || !selectedTenant) return;
+    setRunning(true); setErr('');
+    try {
+      const res: any = await tenantsApi.purge(selectedId, Array.from(effectiveSelected()));
+      setResult(res.data); setShowDialog(false); setSelected(new Set()); setConfirmName('');
+      const prev: any = await tenantsApi.purgePreview(selectedId);
+      setPreview(prev.data);
+    } catch (e: any) { setErr(e?.message || 'Error al ejecutar purga'); }
+    finally { setRunning(false); }
+  };
+
+  const colorMap: Record<string, { border: string; header: string; check: string }> = {
+    blue:  { border: 'border-blue-100',  header: 'bg-blue-50 border-blue-100 text-blue-700',   check: 'accent-blue-500' },
+    amber: { border: 'border-amber-100', header: 'bg-amber-50 border-amber-100 text-amber-700', check: 'accent-amber-500' },
+    red:   { border: 'border-red-100',   header: 'bg-red-50 border-red-100 text-red-700',       check: 'accent-red-500' },
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Banner de advertencia */}
+      <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3 items-start">
+        <span className="text-2xl">⚠️</span>
+        <div>
+          <p className="font-semibold text-red-700">Zona de mantenimiento — Solo SuperAdmin</p>
+          <p className="text-sm text-red-600 mt-1">
+            Permite borrar datos de prueba de forma permanente e irreversible. Aislado por fraccionamiento.
+          </p>
+        </div>
+      </div>
+
+      {/* Paso 1: Selección de fraccionamiento */}
+      <div className="glass-card">
+        <h3 className="font-semibold text-slate-700 mb-4">1. Seleccionar fraccionamiento</h3>
+        <select
+          className="input-field"
+          value={selectedId}
+          onChange={e => { setSelectedId(e.target.value); setSelected(new Set()); setResult(null); setErr(''); }}
+        >
+          <option value="">— Elige un fraccionamiento —</option>
+          {allTenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+      </div>
+
+      {/* Paso 2: Selección de operaciones */}
+      {selectedId && (
+        <div className="glass-card">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-slate-700">2. Seleccionar qué borrar</h3>
+            <div className="flex gap-2">
+              {loadingPreview && <span className="text-sm text-slate-400 self-center">Cargando...</span>}
+              {!loadingPreview && preview && (<>
+                <button onClick={() => setSelected(new Set(PURGE_OPS.filter(o => o.group === 'operativo').map(o => o.key)))}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-50 transition-colors">
+                  Operativos
+                </button>
+                <button onClick={() => setSelected(new Set(PURGE_OPS.map(o => o.key)))}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
+                  Todo
+                </button>
+                <button onClick={() => setSelected(new Set())}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors">
+                  Limpiar
+                </button>
+              </>)}
+            </div>
+          </div>
+
+          {preview && (
+            <div className="space-y-4">
+              {PURGE_GROUPS.map(group => {
+                const c = colorMap[group.color];
+                return (
+                  <div key={group.key} className={`rounded-xl border ${c.border} overflow-hidden`}>
+                    <div className={`px-4 py-2 border-b ${c.header} font-semibold text-xs uppercase tracking-wide`}>
+                      {group.label}
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {PURGE_OPS.filter(o => o.group === group.key).map(op => {
+                        const count = preview[op.previewKey] ?? 0;
+                        const forced = isForced(op.key);
+                        const checked = selected.has(op.key) || forced;
+                        return (
+                          <label key={op.key}
+                            className={`flex items-center gap-4 px-4 py-3 transition-colors ${
+                              forced ? 'bg-slate-50 opacity-60 cursor-default' : 'hover:bg-slate-50 cursor-pointer'
+                            }`}
+                          >
+                            <input type="checkbox" className={`w-4 h-4 ${c.check} flex-shrink-0`}
+                              checked={checked} onChange={() => toggle(op.key)} disabled={forced} />
+                            <div className="flex-1 min-w-0">
+                              <span className="font-medium text-slate-700 text-sm">{op.label}</span>
+                              {forced
+                                ? <span className="block text-xs text-slate-400">Incluido automáticamente al borrar unidades</span>
+                                : op.note && <span className="block text-xs text-slate-400">{op.note}</span>
+                              }
+                            </div>
+                            <span className={`text-sm font-mono font-semibold px-2.5 py-0.5 rounded-full flex-shrink-0 ${
+                              count > 0 ? 'bg-slate-100 text-slate-700' : 'bg-slate-50 text-slate-400'
+                            }`}>
+                              {count.toLocaleString()}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Resultado */}
+      {result && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+          <p className="font-semibold text-green-700 mb-3">✓ Purga completada</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {Object.entries(result).map(([k, v]) => (
+              <div key={k} className="bg-white rounded-lg px-3 py-2 text-sm border border-green-100 flex justify-between gap-2">
+                <span className="text-slate-500 capitalize truncate">{k.replace(/([A-Z])/g, ' $1').toLowerCase()}</span>
+                <span className="font-semibold text-slate-700 flex-shrink-0">{(v as number).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {err && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-600">{err}</div>}
+
+      {/* Botón ejecutar */}
+      {selected.size > 0 && selectedId && (
+        <div className="flex justify-end">
+          <button onClick={() => { setShowDialog(true); setConfirmName(''); }}
+            className="px-6 py-2.5 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl transition-colors shadow-sm">
+            Purgar datos seleccionados
+          </button>
+        </div>
+      )}
+
+      {/* Modal de confirmación */}
+      {showDialog && selectedTenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
+            <h3 className="text-lg font-bold text-slate-800 mb-1">⚠️ Confirmar purga de datos</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              Se borrarán permanentemente los datos seleccionados de{' '}
+              <strong className="text-slate-700">{selectedTenant.name}</strong>. Esta acción no se puede deshacer.
+            </p>
+
+            {/* Resumen */}
+            <div className="bg-red-50 border border-red-100 rounded-xl p-3 mb-4 space-y-1.5 max-h-48 overflow-y-auto">
+              {Array.from(effectiveSelected()).map(key => {
+                const op = PURGE_OPS.find(o => o.key === key)!;
+                const count = preview ? (preview[op.previewKey] ?? 0) : 0;
+                return (
+                  <div key={key} className="flex justify-between text-sm">
+                    <span className="text-slate-600">{op.label}</span>
+                    <span className="font-semibold text-red-700">{count.toLocaleString()} registros</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Escribe <strong>{selectedTenant.name}</strong> para confirmar:
+              </label>
+              <input type="text" className="input-field"
+                placeholder={selectedTenant.name}
+                value={confirmName}
+                onChange={e => setConfirmName(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowDialog(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-medium hover:bg-slate-50 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={handlePurge}
+                disabled={confirmName !== selectedTenant.name || running}
+                className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors">
+                {running ? 'Purgando...' : 'Confirmar y purgar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Componente principal ───────────────────────────────────────
 export default function ConfiguracionPage() {
   const { user, tenantId, setTenant } = useAuthStore();
@@ -945,7 +1214,7 @@ export default function ConfiguracionPage() {
 
       {/* ── Tabs ── */}
       <div className="flex gap-1 mb-6 bg-white/50 p-1 rounded-xl flex-wrap">
-        {TABS.map((t) => (
+        {TABS.filter(t => !t.superAdminOnly || isSuperAdmin).map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -1874,6 +2143,13 @@ export default function ConfiguracionPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* ══════════════════════════════════
+          TAB: MANTENIMIENTO (SuperAdmin)
+         ══════════════════════════════════ */}
+      {tab === 'mantenimiento' && isSuperAdmin && (
+        <MantenimientoTab allTenants={allTenants} />
       )}
 
       {/* ── Modales ── */}

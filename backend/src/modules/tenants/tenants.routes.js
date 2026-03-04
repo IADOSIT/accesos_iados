@@ -25,5 +25,7 @@ router.put('/:id', superAdminOnly, validate(updateTenantSchema), ctrl.update);
 router.post('/:id/activate', superAdminOnly, ctrl.activate);
 router.post('/:id/deactivate', superAdminOnly, ctrl.deactivate);
 router.delete('/:id', superAdminOnly, ctrl.hardDelete);
+router.get('/:id/purge/preview', superAdminOnly, ctrl.purgePreview);
+router.post('/:id/purge', superAdminOnly, ctrl.purge);
 
 module.exports = router;
