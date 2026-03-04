@@ -118,46 +118,50 @@ class _MainShellState extends ConsumerState<_MainShell> {
   void initState() {
     super.initState();
     if (!kIsWeb) {
-      // Foreground: app abierta
-      FirebaseMessaging.onMessage.listen((message) {
-        ref.invalidate(unreadCountProvider);
-        if (message.data['type'] == 'PANIC') {
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _showPanicAlert(message.data);
-          });
-        } else if (message.data['type'] == 'SERVICE_REQUEST') {
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _showServiceRequestAlert(message.data);
-          });
-        }
-      });
-
-      // Background: usuario toca la notificación del sistema
-      FirebaseMessaging.onMessageOpenedApp.listen((message) {
-        ref.invalidate(unreadCountProvider);
-        if (message.data['type'] == 'SERVICE_REQUEST') {
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _showServiceRequestAlert(message.data);
-          });
-        } else if (message.data['type'] == 'PANIC') {
-          SchedulerBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _showPanicAlert(message.data);
-          });
-        }
-      });
-
-      // Terminada: app abierta desde notificación
-      FirebaseMessaging.instance.getInitialMessage().then((message) {
-        if (message == null) return;
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          if (message.data['type'] == 'SERVICE_REQUEST') {
-            _showServiceRequestAlert(message.data);
-          } else if (message.data['type'] == 'PANIC') {
-            _showPanicAlert(message.data);
+      try {
+        // Foreground: app abierta
+        FirebaseMessaging.onMessage.listen((message) {
+          ref.invalidate(unreadCountProvider);
+          if (message.data['type'] == 'PANIC') {
+            SchedulerBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _showPanicAlert(message.data);
+            });
+          } else if (message.data['type'] == 'SERVICE_REQUEST') {
+            SchedulerBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _showServiceRequestAlert(message.data);
+            });
           }
         });
-      });
+
+        // Background: usuario toca la notificación del sistema
+        FirebaseMessaging.onMessageOpenedApp.listen((message) {
+          ref.invalidate(unreadCountProvider);
+          if (message.data['type'] == 'SERVICE_REQUEST') {
+            SchedulerBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _showServiceRequestAlert(message.data);
+            });
+          } else if (message.data['type'] == 'PANIC') {
+            SchedulerBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _showPanicAlert(message.data);
+            });
+          }
+        });
+
+        // Terminada: app abierta desde notificación
+        FirebaseMessaging.instance.getInitialMessage().then((message) {
+          if (message == null) return;
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            if (message.data['type'] == 'SERVICE_REQUEST') {
+              _showServiceRequestAlert(message.data);
+            } else if (message.data['type'] == 'PANIC') {
+              _showPanicAlert(message.data);
+            }
+          });
+        }).catchError((_) {});
+      } catch (_) {
+        // Firebase no disponible en este dispositivo iOS — ignorar silenciosamente
+      }
     }
   }
 

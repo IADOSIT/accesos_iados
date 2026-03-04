@@ -10,11 +10,13 @@ class AccesoDigitalApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
-    final configAsync = ref.watch(tenantConfigProvider);
-
-    final isDark = configAsync.maybeWhen(
-      data: (c) => !c.isLight,
-      orElse: () => true,
+    // .select() previene rebuild de MaterialApp.router cuando el FutureProvider
+    // cambia de estado (loading/data) pero el valor real de isDark no cambia.
+    // Sin esto, cada login dispara un rebuild que interrumpe la navegación en iOS.
+    final isDark = ref.watch(
+      tenantConfigProvider.select(
+        (async) => async.maybeWhen(data: (c) => !c.isLight, orElse: () => true),
+      ),
     );
 
     return MaterialApp.router(
