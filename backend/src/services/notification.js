@@ -18,16 +18,20 @@ if (env.FIREBASE_SERVICE_ACCOUNT_JSON) {
   console.log('[FCM] Sin configuración — notificaciones push desactivadas');
 }
 
-async function _send(fcmToken, title, body, data) {
+async function _send(fcmToken, title, body, data, type) {
   if (!messaging || !fcmToken) return;
   try {
     await messaging.send({
       token: fcmToken,
       notification: { title, body },
-      data: data
-        ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)]))
-        : {},
-      android: { priority: 'high' },
+      data: {
+        ...(data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {}),
+        type: type || '',
+      },
+      android: {
+        priority: 'high',
+        notification: { channelId: 'general_notifications' },
+      },
     });
   } catch (err) {
     console.error('[FCM] Error enviando push:', err.message);
@@ -53,7 +57,7 @@ async function sendToUser(userId, tenantId, type, title, body, data) {
     });
     await Promise.all([
       _save(tenantId, userId, type, title, body, data),
-      _send(user?.fcmToken, title, body, data),
+      _send(user?.fcmToken, title, body, data, type),
     ]);
   } catch (err) {
     console.error('[FCM] sendToUser error:', err.message);

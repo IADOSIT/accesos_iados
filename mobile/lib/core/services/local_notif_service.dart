@@ -6,6 +6,18 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 final FlutterLocalNotificationsPlugin localNotifPlugin =
     FlutterLocalNotificationsPlugin();
 
+/// Canal Android para notificaciones generales (pagos, accesos, avisos)
+const AndroidNotificationChannel androidGeneralChannel =
+    AndroidNotificationChannel(
+  'general_notifications',
+  'Notificaciones',
+  description: 'Alertas de pagos, accesos y avisos del fraccionamiento',
+  importance: Importance.high,
+  playSound: true,
+  enableVibration: true,
+  showBadge: true,
+);
+
 /// Canal Android para solicitudes de servicio (fullScreenIntent + max importance)
 const AndroidNotificationChannel androidSvcRequestChannel =
     AndroidNotificationChannel(

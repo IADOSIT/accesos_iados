@@ -148,14 +148,18 @@ class _MainShellState extends ConsumerState<_MainShell> {
         // Foreground: app abierta
         FirebaseMessaging.onMessage.listen((message) {
           ref.invalidate(unreadCountProvider);
-          if (message.data['type'] == 'PANIC') {
+          final type = message.data['type'] as String?;
+          if (type == 'PANIC') {
             SchedulerBinding.instance.addPostFrameCallback((_) {
               if (mounted) _showPanicAlert(message.data);
             });
-          } else if (message.data['type'] == 'SERVICE_REQUEST') {
+          } else if (type == 'SERVICE_REQUEST') {
             SchedulerBinding.instance.addPostFrameCallback((_) {
               if (mounted) _showServiceRequestAlert(message.data);
             });
+          } else {
+            // Para cualquier otro tipo: mostrar banner de notificación local
+            _showForegroundNotif(message);
           }
         });
 
@@ -189,6 +193,34 @@ class _MainShellState extends ConsumerState<_MainShell> {
         // Firebase no disponible en este dispositivo iOS — ignorar silenciosamente
       }
     }
+  }
+
+  Future<void> _showForegroundNotif(RemoteMessage message) async {
+    final notif = message.notification;
+    final title = notif?.title ?? message.data['_title'] as String? ?? 'Acceso Digital';
+    final body  = notif?.body  ?? message.data['_body']  as String? ?? '';
+    if (body.isEmpty) return;
+    await localNotifPlugin.show(
+      message.hashCode,
+      title,
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'general_notifications',
+          'Notificaciones',
+          importance: Importance.high,
+          priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
+          icon: '@mipmap/ic_launcher',
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentSound: true,
+          presentBadge: true,
+        ),
+      ),
+    );
   }
 
   void _showServiceRequestAlert(Map<String, dynamic> data) {

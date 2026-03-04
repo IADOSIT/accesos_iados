@@ -89,19 +89,34 @@ void main() async {
       onDidReceiveNotificationResponse: onLocalNotifTap,
     );
 
-    // Crear canal Android (idempotente)
-    await localNotifPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(androidSvcRequestChannel);
+    // Crear canales Android (idempotente)
+    final androidPlugin = localNotifPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    await androidPlugin?.createNotificationChannel(androidGeneralChannel);
+    await androidPlugin?.createNotificationChannel(androidSvcRequestChannel);
+
+    // Android 13+ (API 33+): solicitar POST_NOTIFICATIONS en runtime
+    await androidPlugin?.requestNotificationsPermission();
 
     // ── Firebase ─────────────────────────────────────────────────────────────
     try {
       await Firebase.initializeApp();
       FirebaseMessaging.onBackgroundMessage(_fcmBackgroundHandler);
+      // Solicita permisos en iOS y Android 13+ (maneja POST_NOTIFICATIONS automáticamente)
       await FirebaseMessaging.instance.requestPermission(
         alert: true,
         badge: true,
         sound: true,
+        provisional: false,
+        criticalAlert: false,
+        carPlay: false,
+        announcement: false,
+      );
+      // Desactivar la presentación automática de FCM en foreground (manejamos con local_notif)
+      await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+        alert: false,
+        badge: true,
+        sound: false,
       );
     } catch (e) {
       debugPrint('[FCM] Firebase no inicializado: $e');
