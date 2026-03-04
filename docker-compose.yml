@@ -41,7 +41,7 @@ services:
       - "3005:3002"
     environment:
       - NEXT_PUBLIC_API_URL=https://accesodigitalapi.iados.mx/api
-      - API_URL=https://accesodigitalapi.iados.mx/api
+      - API_URL=http://backend:3001/api
     depends_on:
       backend:
         condition: service_healthy
