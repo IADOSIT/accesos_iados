@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:animate_do/animate_do.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
@@ -30,12 +29,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
-    final ok = await ref
+    await ref
         .read(authProvider.notifier)
         .login(_emailCtrl.text.trim(), _passwordCtrl.text);
-    if (ok && mounted) {
-      context.go('/dashboard');
-    }
+    // La navegación la maneja el redirect del GoRouter automáticamente
   }
 
   @override

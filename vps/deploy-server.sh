@@ -16,6 +16,13 @@ git pull --quiet
 VERSION=$(cat VERSION 2>/dev/null || echo "?")
 echo "  Versión: $VERSION"
 
+# ── 1b. Sincronizar PORTAL_URL desde vps/backend.env.production ──────
+PORTAL_URL_PROD=$(grep '^PORTAL_URL=' "$VPS_DIR/vps/backend.env.production" | sed 's/^PORTAL_URL=//;s/"//g')
+if [ -n "$PORTAL_URL_PROD" ] && [ -f "$VPS_DIR/backend/.env" ]; then
+  sed -i "s|^PORTAL_URL=.*|PORTAL_URL=$PORTAL_URL_PROD|" "$VPS_DIR/backend/.env"
+  echo "  PORTAL_URL → $PORTAL_URL_PROD"
+fi
+
 # ── 2. Backend ────────────────────────────────────────────────────
 echo "[2/4] Backend — npm install + prisma generate..."
 cd "$VPS_DIR/backend"
