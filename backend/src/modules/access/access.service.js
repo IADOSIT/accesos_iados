@@ -85,10 +85,10 @@ async function handleQRAccess(tenantId, userId, device, code, visitorName, visit
   // Incrementar usos
   await prisma.qRCode.update({ where: { id: qr.id }, data: { usedCount: { increment: 1 } } });
 
-  return executeOpen(tenantId, qr.unitId, userId, device, 'QR', 'ENTRY', true, `Acceso QR: ${qr.visitorName}`, visitorName || qr.visitorName, visitorPlate, notes);
+  return executeOpen(tenantId, qr.unitId, userId, device, 'QR', 'ENTRY', true, `Acceso QR: ${qr.visitorName}`, visitorName || qr.visitorName, visitorPlate, notes, qr.category);
 }
 
-async function executeOpen(tenantId, unitId, userId, device, method, direction, granted, reason, visitorName, visitorPlate, notes) {
+async function executeOpen(tenantId, unitId, userId, device, method, direction, granted, reason, visitorName, visitorPlate, notes, category) {
   // Enviar comando MQTT al dispositivo
   if (device.mqttTopic) {
     // Shelly Plus 1 (Gen 2) usa RPC sobre MQTT
@@ -112,9 +112,22 @@ async function executeOpen(tenantId, unitId, userId, device, method, direction, 
   // Crear log
   const log = await createLog(tenantId, unitId, userId, device.id, method, direction, granted, reason, visitorName, visitorPlate, notes);
 
-  // Notificar QR usado exitosamente
-  if (granted && method === 'QR' && unitId) {
-    notif.sendToUnit(tenantId, unitId, 'QR_USED', 'Visita en puerta', `QR utilizado — ${log.visitorName || 'visitante'}`, { deviceId: device.id });
+  // Notificar entrada por QR
+  if (granted && method === 'QR' && direction !== 'EXIT' && unitId) {
+    const timeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+    const vName = log.visitorName || 'Visitante';
+    const catLabel = category ? ` — ${category}` : '';
+    notif.sendToUnit(tenantId, unitId, 'QR_USED', '🚗 Visita en puerta', `${vName}${catLabel} — ${timeStr}`, {
+      deviceId: device.id, direction: 'ENTRY', visitorName: vName, category: category || '',
+    });
+  }
+
+  // Notificar salida de visitante (cuando el guardia registra la salida con nombre)
+  if (granted && direction === 'EXIT' && unitId && log.visitorName) {
+    const timeStr = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+    notif.sendToUnit(tenantId, unitId, 'QR_USED', '🚪 Visita saliente', `${log.visitorName} salió a las ${timeStr}`, {
+      deviceId: device.id, direction: 'EXIT', visitorName: log.visitorName,
+    });
   }
 
   return { granted, reason, log };

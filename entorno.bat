@@ -53,7 +53,7 @@ echo  20. Build Flutter web + Deploy  (build local + scp + pm2 restart)
 echo  21. Deploy TODO                 (19 + 20 completo)
 echo  22. Estado del VPS              (docker ps + ram + disco)
 echo  23. Logs del VPS                (docker compose logs, 80 lineas)
-echo  24. Compilar APK para VPS       (pide nombre, apunta a VPS)
+echo  24. Compilar APK para VPS       (apunta a VPS)
 echo  25. Nueva version               (bump VERSION + git tag + push)
 echo  26. Cambiar entorno compilacion (actual: %ENV_MODE%)
 echo.
@@ -357,7 +357,7 @@ echo  Portal: %APP_PORTAL_URL%
 echo  (Esto tarda varios minutos)
 echo.
 cd /d "%~dp0mobile"
-C:\flutter\bin\flutter.bat build apk --release --dart-define=API_URL=%APP_API_URL% --dart-define=PORTAL_URL=%APP_PORTAL_URL%
+call C:\flutter\bin\flutter.bat build apk --release --dart-define=API_URL=%APP_API_URL% --dart-define=PORTAL_URL=%APP_PORTAL_URL%
 if %ERRORLEVEL% NEQ 0 (
   echo.
   echo  ERROR: La compilacion fallo.
@@ -683,18 +683,15 @@ if "%ENV_MODE%"=="DNS" set "FLUTTER_PORTAL_URL=https://accesodigital.iados.mx"
 :: Leer version actual
 set "CURRENT_VER="
 set /p CURRENT_VER=<"%~dp0VERSION"
-echo  Version actual: %CURRENT_VER%
-echo.
-set "APK_NAME="
-set /p APK_NAME="  Nombre del APK (ej: AccesoDigital-v%CURRENT_VER%-cliente): "
-if "%APK_NAME%"=="" set "APK_NAME=AccesoDigital-%CURRENT_VER%"
+set "APK_NAME=AccesoDigital-%CURRENT_VER%"
+echo  Version: %CURRENT_VER%
 
 echo.
 echo  Compilando APK apuntando a: %FLUTTER_API_URL%
 echo  (Esto tarda varios minutos)
 echo.
 cd /d "%~dp0mobile"
-C:\flutter\bin\flutter.bat build apk --release ^
+call C:\flutter\bin\flutter.bat build apk --release ^
   --dart-define=API_URL=%FLUTTER_API_URL% ^
   --dart-define=PORTAL_URL=%FLUTTER_PORTAL_URL%
 if %ERRORLEVEL% NEQ 0 (

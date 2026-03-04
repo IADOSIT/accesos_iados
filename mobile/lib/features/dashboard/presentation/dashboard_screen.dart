@@ -156,6 +156,18 @@ class DashboardScreen extends ConsumerWidget {
                   child: const _PanicButton(),
                 ),
 
+                const SizedBox(height: 16),
+
+                // Formas de pago — todos los roles (si está configurado)
+                if (tenantConfigAsync.valueOrNull?.paymentConfig.hasInfo == true)
+                  FadeInUp(
+                    delay: const Duration(milliseconds: 350),
+                    child: _PaymentShortcutCard(
+                      config: tenantConfigAsync.valueOrNull!.paymentConfig,
+                      role: auth.role,
+                    ),
+                  ),
+
                 const SizedBox(height: 24),
 
                 // Actividad reciente (todos los roles)
@@ -1307,6 +1319,88 @@ class _PanicButtonState extends ConsumerState<_PanicButton> {
                 ),
               ),
             ),
+    );
+  }
+}
+
+// ── Tarjeta compacta formas de pago ────────────────────────────────────────
+
+class _PaymentShortcutCard extends StatelessWidget {
+  final PaymentConfig config;
+  final String? role;
+  const _PaymentShortcutCard({required this.config, required this.role});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
+    final bankNames = config.bankAccounts.map((b) => b.bankName).join(' · ');
+    final subtitle = bankNames.isNotEmpty
+        ? bankNames
+        : config.paymentConcept.isNotEmpty
+            ? config.paymentConcept
+            : 'Ver métodos de pago';
+
+    return GestureDetector(
+      onTap: () => context.go('/payments'),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: c.bgCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: c.border),
+          boxShadow: isLight
+              ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 2))]
+              : null,
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: c.primary.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.account_balance_outlined, color: c.primary, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Formas de pago',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: c.textPrimary),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 12, color: c.textMuted),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            if (config.monthlyAmount > 0) ...[
+              Text(
+                NumberFormat.currency(locale: 'es_MX', symbol: '\$')
+                    .format(config.monthlyAmount),
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: c.primary),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Icon(Icons.chevron_right_rounded, color: c.textMuted, size: 20),
+          ],
+        ),
+      ),
     );
   }
 }

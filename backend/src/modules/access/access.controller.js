@@ -24,8 +24,17 @@ async function generateQR(req, res) {
 
 async function getLogs(req, res) {
   const { page, limit, skip } = parsePagination(req.query);
-  // RESIDENT: forzar filtro a su propia unidad
-  const unitId = req.user.role === 'RESIDENT' ? req.user.unitId : req.query.unitId;
+
+  let unitId;
+  if (req.user.role === 'RESIDENT') {
+    // RESIDENT sin unidad asignada → no tiene logs que ver
+    if (!req.user.unitId) return paginated(res, [], 0, page, limit);
+    // Forzar su propia unidad, nunca permitir ver otras
+    unitId = req.user.unitId;
+  } else {
+    unitId = req.query.unitId || undefined;
+  }
+
   const { data, total } = await svc.getLogs(req.tenantId, {
     skip,
     limit,

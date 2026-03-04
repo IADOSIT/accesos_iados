@@ -36,7 +36,7 @@ interface User {
 
 interface Unit {
   id: string;
-  number: string;
+  identifier: string;
   block?: string;
 }
 
@@ -123,7 +123,7 @@ function ConfigSection() {
 }
 
 // ── Sección 2: Envío manual ───────────────────────────────────
-function BroadcastSection() {
+function BroadcastSection({ onSent }: { onSent: () => void }) {
   const [target, setTarget] = useState<'ALL' | 'ROLE' | 'USER' | 'UNIT'>('ALL');
   const [role, setRole] = useState('RESIDENT');
   const [userId, setUserId] = useState('');
@@ -157,6 +157,7 @@ function BroadcastSection() {
       setMsg('Notificación enviada');
       setTitle('');
       setBody('');
+      setTimeout(onSent, 800);
     } catch {
       setMsg('Error al enviar');
     } finally {
@@ -231,7 +232,7 @@ function BroadcastSection() {
               <option value="">Seleccionar…</option>
               {units.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.block ? `${u.block}-` : ''}{u.number}
+                  {u.block ? `${u.block}-` : ''}{u.identifier}
                 </option>
               ))}
             </select>
@@ -341,6 +342,8 @@ function HistorySection() {
 
 // ── Página principal ──────────────────────────────────────────
 export default function NotificacionesPage() {
+  const [historyKey, setHistoryKey] = useState(0);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -348,8 +351,8 @@ export default function NotificacionesPage() {
         subtitle="Configura alertas automáticas y envía mensajes manuales a los usuarios"
       />
       <ConfigSection />
-      <BroadcastSection />
-      <HistorySection />
+      <BroadcastSection onSent={() => setHistoryKey((k) => k + 1)} />
+      <HistorySection key={historyKey} />
     </div>
   );
 }

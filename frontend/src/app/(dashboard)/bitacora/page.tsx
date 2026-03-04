@@ -5,24 +5,34 @@ import { accessApi } from '@/services/api';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
 
+const LIMIT = 20;
+
 export default function BitacoraPage() {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ method: '', from: '', to: '' });
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  const load = () => {
+  const load = (p = page) => {
     setLoading(true);
     const params = new URLSearchParams();
     if (filters.method) params.set('method', filters.method);
     if (filters.from) params.set('from', filters.from);
     if (filters.to) params.set('to', filters.to);
+    params.set('page', String(p));
+    params.set('limit', String(LIMIT));
     accessApi.logs(params.toString())
-      .then((res: any) => setLogs(res.data || []))
+      .then((res: any) => {
+        setLogs(res.data ?? []);
+        setTotal(res.pagination?.total ?? 0);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [filters]);
+  useEffect(() => { setPage(1); load(1); }, [filters]);
+  useEffect(() => { load(page); }, [page]);
 
   const methodLabels: Record<string, string> = {
     APP: 'Aplicación', QR: 'Código QR', GUARD_OVERRIDE: 'Guardia', REMOTE: 'Remoto', EXIT_SENSOR: 'Sensor',
@@ -89,7 +99,13 @@ export default function BitacoraPage() {
         />
       </div>
 
-      <DataTable columns={columns} data={logs} loading={loading} emptyMessage="No hay registros de acceso" />
+      <DataTable
+        columns={columns}
+        data={logs}
+        loading={loading}
+        emptyMessage="No hay registros de acceso"
+        pagination={{ total, page, limit: LIMIT, onPage: setPage }}
+      />
     </div>
   );
 }
