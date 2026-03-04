@@ -30,6 +30,18 @@ const AndroidNotificationChannel androidSvcRequestChannel =
   showBadge: true,
 );
 
+/// Canal Android para alertas de pánico (max importance, sonido activado)
+const AndroidNotificationChannel androidPanicChannel =
+    AndroidNotificationChannel(
+  'panic',
+  'Alertas de Emergencia',
+  description: 'Alertas críticas de pánico del fraccionamiento',
+  importance: Importance.max,
+  playSound: true,
+  enableVibration: true,
+  showBadge: true,
+);
+
 /// Stream para pasar datos de notificación tappeada al widget tree
 final StreamController<Map<String, dynamic>> localNotifTapController =
     StreamController<Map<String, dynamic>>.broadcast();

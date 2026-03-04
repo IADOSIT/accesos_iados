@@ -94,6 +94,7 @@ void main() async {
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.createNotificationChannel(androidGeneralChannel);
     await androidPlugin?.createNotificationChannel(androidSvcRequestChannel);
+    await androidPlugin?.createNotificationChannel(androidPanicChannel);
 
     // Android 13+ (API 33+): solicitar POST_NOTIFICATIONS en runtime
     await androidPlugin?.requestNotificationsPermission();

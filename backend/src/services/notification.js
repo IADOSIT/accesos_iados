@@ -3,14 +3,21 @@ const env = require('../config/env');
 
 let messaging = null;
 
-// Inicializar Firebase Admin solo si existe la configuración
-if (env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+// Inicializar Firebase Admin — prioriza archivo montado (evita problemas de escaping)
+if (env.FIREBASE_KEY_PATH || env.FIREBASE_SERVICE_ACCOUNT_JSON) {
   try {
     const admin = require('firebase-admin');
-    const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
-    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    let credential;
+    if (env.FIREBASE_KEY_PATH) {
+      credential = admin.credential.cert(env.FIREBASE_KEY_PATH);
+      console.log('[FCM] Firebase Admin inicializado desde archivo:', env.FIREBASE_KEY_PATH);
+    } else {
+      const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      credential = admin.credential.cert(serviceAccount);
+      console.log('[FCM] Firebase Admin inicializado desde variable de entorno');
+    }
+    admin.initializeApp({ credential });
     messaging = admin.messaging();
-    console.log('[FCM] Firebase Admin inicializado');
   } catch (err) {
     console.error('[FCM] Error inicializando Firebase Admin:', err.message);
   }

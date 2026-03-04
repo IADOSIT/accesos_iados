@@ -62,7 +62,7 @@ class DashboardScreen extends ConsumerWidget {
         slivers: [
           // App Bar personalizado
           SliverAppBar(
-            expandedHeight: 120,
+            expandedHeight: 148,
             floating: false,
             pinned: true,
             backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -71,17 +71,18 @@ class DashboardScreen extends ConsumerWidget {
                 decoration: BoxDecoration(
                   color: Theme.of(context).scaffoldBackgroundColor,
                 ),
-                padding: const EdgeInsets.fromLTRB(20, 56, 20, 16),
-                child: Row(
+                padding: const EdgeInsets.fromLTRB(20, 52, 20, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const _HexLogoSmall(),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
+                    // Fila: Logo + nombre fraccionamiento + badge rol
+                    Row(
+                      children: [
+                        const _HexLogoSmall(),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
                             auth.tenantName ?? 'Acceso Digital',
                             style: TextStyle(
                               fontSize: 18,
@@ -89,18 +90,42 @@ class DashboardScreen extends ConsumerWidget {
                               color: Theme.of(context).colorScheme.onSurface,
                               letterSpacing: -0.3,
                             ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          Text(
-                            _greeting(),
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                            ),
-                          ),
-                        ],
+                        ),
+                        const SizedBox(width: 8),
+                        _RoleBadge(auth: auth, ref: ref),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Saludo
+                    Text(
+                      _greeting(),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                       ),
                     ),
-                    _RoleBadge(auth: auth, ref: ref),
+                    const SizedBox(height: 1),
+                    // Versión
+                    Text(
+                      'v1.0.0',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    // Nombre del usuario
+                    Text(
+                      auth.displayName.isNotEmpty ? auth.displayName : '',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -258,7 +283,7 @@ class _HexLogoSmall extends StatelessWidget {
   const _HexLogoSmall();
   @override
   Widget build(BuildContext context) =>
-      const IadosLogo(size: 36, showText: false);
+      const IadosLogo(size: 42, showText: false);
 }
 
 class _RoleBadge extends StatelessWidget {
