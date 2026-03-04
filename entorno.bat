@@ -48,11 +48,11 @@ echo  16. Compilar APK Android         (modo: %ENV_MODE%)
 echo.
 echo  [ VPS - PRODUCCION  74.208.149.7 ]
 echo  18. SSH al VPS
-echo  19. Deploy Backend + Frontend   (git pull + npm + pm2 restart)
+echo  19. Deploy Backend + Frontend   (git pull + docker compose up)
 echo  20. Build Flutter web + Deploy  (build local + scp + pm2 restart)
 echo  21. Deploy TODO                 (19 + 20 completo)
-echo  22. Estado del VPS              (pm2 list + ram + disco)
-echo  23. Logs del VPS                (pm2 logs ultimas 80 lineas)
+echo  22. Estado del VPS              (docker ps + ram + disco)
+echo  23. Logs del VPS                (docker compose logs, 80 lineas)
 echo  24. Compilar APK para VPS       (pide nombre, apunta a VPS)
 echo  25. Nueva version               (bump VERSION + git tag + push)
 echo  26. Cambiar entorno compilacion (actual: %ENV_MODE%)
@@ -645,7 +645,7 @@ echo.
 call :VPS_LOAD_CONFIG
 echo  Conectando a %VPS_USER%@%VPS_IP%...
 echo.
-ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "pm2 list && echo && echo '--- Memoria ---' && free -h && echo && echo '--- Disco ---' && df -h / && echo && echo '--- Mosquitto ---' && systemctl is-active mosquitto 2>/dev/null || echo INACTIVO"
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "cd /opt/iados && echo '--- Docker ---' && docker compose ps && echo && echo '--- Flutter PM2 ---' && (pm2 describe iados-flutter 2>/dev/null | grep -E 'status|name' || echo '  iados-flutter: no encontrado') && echo && echo '--- Memoria ---' && free -h && echo && echo '--- Disco ---' && df -h / && echo && echo '--- Mosquitto ---' && (systemctl is-active mosquitto 2>/dev/null || echo INACTIVO)"
 echo.
 pause
 goto MENU
@@ -661,7 +661,7 @@ echo.
 call :VPS_LOAD_CONFIG
 echo  Mostrando logs... (CTRL+C para salir)
 echo.
-ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "pm2 logs --lines 80 --nostream"
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "cd /opt/iados && docker compose logs --tail=80 --no-color 2>&1"
 echo.
 pause
 goto MENU
@@ -802,6 +802,9 @@ powershell -NoProfile -Command ^
 echo  Actualizando PORTAL_URL en backend...
 powershell -NoProfile -Command ^
   "$f='%~dp0backend\.env'; $c=[IO.File]::ReadAllText($f); $c=$c -replace 'PORTAL_URL=.*','PORTAL_URL=https://accesodigital.iados.mx'; [IO.File]::WriteAllText($f,$c)"
+echo  Actualizando PORTAL_URL en docker-compose...
+powershell -NoProfile -Command ^
+  "$f='%~dp0docker-compose.yml'; $c=[IO.File]::ReadAllText($f); $c=$c -replace 'PORTAL_URL=.*','PORTAL_URL=https://accesodigital.iados.mx'; [IO.File]::WriteAllText($f,$c)"
 echo.
 echo  [OK] Entorno cambiado a DNS (produccion)
 echo.
@@ -822,6 +825,12 @@ powershell -NoProfile -Command ^
 echo  Actualizando PORTAL_URL en backend...
 powershell -NoProfile -Command ^
   "$f='%~dp0backend\.env'; $c=[IO.File]::ReadAllText($f); $c=$c -replace 'PORTAL_URL=.*','PORTAL_URL=http://34.71.132.26:3002'; [IO.File]::WriteAllText($f,$c)"
+echo  Actualizando PORTAL_URL en docker-compose (GCP)...
+powershell -NoProfile -Command ^
+  "$f='%~dp0docker-compose.yml'; $c=[IO.File]::ReadAllText($f); $c=$c -replace 'PORTAL_URL=.*','PORTAL_URL=http://34.71.132.26:3002'; [IO.File]::WriteAllText($f,$c)"
+echo  Actualizando MQTT en docker-compose (GCP)...
+powershell -NoProfile -Command ^
+  "$f='%~dp0docker-compose.yml'; $c=[IO.File]::ReadAllText($f); $c=$c.Replace('mqtt://host.docker.internal:1883','mqtt://74.208.149.7:1883'); [IO.File]::WriteAllText($f,$c)"
 echo.
 echo  [OK] Entorno cambiado a GCP (desarrollo)
 echo.
@@ -837,6 +846,12 @@ powershell -NoProfile -Command ^
 echo  Actualizando PORTAL_URL en backend...
 powershell -NoProfile -Command ^
   "$f='%~dp0backend\.env'; $c=[IO.File]::ReadAllText($f); $c=$c -replace 'PORTAL_URL=.*','PORTAL_URL=http://74.208.149.7:3002'; [IO.File]::WriteAllText($f,$c)"
+echo  Actualizando PORTAL_URL en docker-compose (VPS)...
+powershell -NoProfile -Command ^
+  "$f='%~dp0docker-compose.yml'; $c=[IO.File]::ReadAllText($f); $c=$c -replace 'PORTAL_URL=.*','PORTAL_URL=http://74.208.149.7:3002'; [IO.File]::WriteAllText($f,$c)"
+echo  Actualizando MQTT en docker-compose (VPS)...
+powershell -NoProfile -Command ^
+  "$f='%~dp0docker-compose.yml'; $c=[IO.File]::ReadAllText($f); $c=$c.Replace('mqtt://74.208.149.7:1883','mqtt://host.docker.internal:1883'); [IO.File]::WriteAllText($f,$c)"
 echo.
 echo  [OK] Entorno cambiado a VPS (74.208.149.7)
 echo.

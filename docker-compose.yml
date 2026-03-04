@@ -18,7 +18,7 @@ services:
       - MQTT_USERNAME=iados
       - MQTT_PASSWORD=iados22...
       - ACCESS_COOLDOWN_SECONDS=30
-      - PORTAL_URL=http://74.208.149.7:3002
+      - PORTAL_URL=https://accesodigital.iados.mx
     restart: always
     extra_hosts:
       - "host.docker.internal:host-gateway"
