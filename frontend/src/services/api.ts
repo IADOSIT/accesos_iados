@@ -109,6 +109,15 @@ export const serviceQrApi = {
   reject:         (id: string, notes?: string) => PATCH(`/service-qr/requests/${id}/reject`, { notes }),
 };
 
+// ============ SAAS (Cobro por Uso) ============
+export const saasApi = {
+  status: () => GET('/saas/status'),
+  config: () => GET('/saas/config'),
+  updateConfig: (data: unknown) => PUT('/saas/config', data),
+  createPreference: () => POST('/saas/preference', {}),
+  verify: (saasPaymentId: string) => POST('/saas/verify', { saasPaymentId }),
+};
+
 // ============ REPORTES ============
 export const reportsApi = {
   dashboard: () => GET('/reports/dashboard'),

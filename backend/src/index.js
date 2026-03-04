@@ -19,6 +19,7 @@ const reportRoutes = require('./modules/reports/reports.routes');
 const configRoutes = require('./modules/config/config.routes');
 const notificationRoutes = require('./modules/notifications/notifications.routes');
 const serviceQrRoutes = require('./modules/service-qr/service-qr.routes');
+const saasRoutes = require('./modules/saas/saas.routes');
 
 const app = express();
 
@@ -81,6 +82,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/service-qr', serviceQrRoutes);
+app.use('/api/saas', saasRoutes);
 
 // 404
 app.use((req, res) => {

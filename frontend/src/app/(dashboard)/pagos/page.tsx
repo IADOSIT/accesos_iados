@@ -10,28 +10,37 @@ export default function PagosPage() {
   const [tab, setTab] = useState<'charges' | 'payments'>('charges');
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const LIMIT = 50;
   const [showChargeModal, setShowChargeModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [chargeForm, setChargeForm] = useState({ unitId: '', type: 'MONTHLY', amount: '', description: '', dueDate: '' });
   const [paymentForm, setPaymentForm] = useState({ unitId: '', chargeId: '', amount: '', method: 'CASH', reference: '', notes: '' });
 
-  const load = () => {
+  const load = (t: string, p: number) => {
     setLoading(true);
-    const fn = tab === 'charges' ? paymentsApi.charges : paymentsApi.payments;
-    fn()
-      .then((res: any) => setData(res.data || []))
+    const fn = t === 'charges' ? paymentsApi.charges : paymentsApi.payments;
+    fn(`page=${p}&limit=${LIMIT}`)
+      .then((res: any) => {
+        setData(res.data || []);
+        setTotalPages(res.pagination?.totalPages || 1);
+        setTotal(res.pagination?.total || 0);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [tab]);
+  useEffect(() => { setPage(1); load(tab, 1); }, [tab]);
+  useEffect(() => { load(tab, page); }, [page]);
 
   const handleCreateCharge = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await paymentsApi.createCharge({ ...chargeForm, amount: parseFloat(chargeForm.amount), dueDate: new Date(chargeForm.dueDate).toISOString() });
       setShowChargeModal(false);
-      load();
+      load(tab, page);
     } catch (err) { alert(err instanceof Error ? err.message : 'Error'); }
   };
 
@@ -40,7 +49,7 @@ export default function PagosPage() {
     try {
       await paymentsApi.createPayment({ ...paymentForm, amount: parseFloat(paymentForm.amount), chargeId: paymentForm.chargeId || undefined });
       setShowPaymentModal(false);
-      load();
+      load(tab, page);
     } catch (err) { alert(err instanceof Error ? err.message : 'Error'); }
   };
 
@@ -118,6 +127,31 @@ export default function PagosPage() {
         loading={loading}
         emptyMessage={tab === 'charges' ? 'No hay cargos registrados' : 'No hay pagos registrados'}
       />
+
+      {/* Paginación */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 px-1">
+          <span className="text-sm text-slate-500">
+            {total} registros · Página {page} de {totalPages}
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="btn-secondary text-sm disabled:opacity-40"
+            >
+              ← Anterior
+            </button>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="btn-secondary text-sm disabled:opacity-40"
+            >
+              Siguiente →
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal Nuevo Cargo */}
       <Modal isOpen={showChargeModal} onClose={() => setShowChargeModal(false)} title="Nuevo Cargo">

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '@/stores/auth';
-import { authApi, configApi, tenantsApi, devicesApi, serviceQrApi } from '@/services/api';
+import { authApi, configApi, tenantsApi, devicesApi, serviceQrApi, saasApi } from '@/services/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -116,7 +116,41 @@ const DEFAULT_FLAGS: FeatureFlags = {
   visitorExitDeviceId: '',
 };
 
-// ── Tipos ──────────────────────────────────────────────────────
+// ── Tipos SaaS ─────────────────────────────────────────────────
+interface SaasConfig {
+  pricePerUnit: number;
+  billingDay: number;
+  gracePeriodDays: number;
+  notifyOnOverdue: boolean;
+  mpAccessToken: string;
+  mpPublicKey: string;
+}
+
+const DEFAULT_SAAS_CFG: SaasConfig = {
+  pricePerUnit: 0,
+  billingDay: 1,
+  gracePeriodDays: 5,
+  notifyOnOverdue: true,
+  mpAccessToken: '',
+  mpPublicKey: '',
+};
+
+interface BillingStatus {
+  period: string;
+  activeUnits: number;
+  pricePerUnit: number;
+  totalAmount: number;
+  billingDay: number;
+  gracePeriodDays: number;
+  dueDate: string;
+  graceDue: string;
+  isOverdue: boolean;
+  currentPayment: any | null;
+  history: any[];
+  configured: boolean;
+}
+
+// ── Tipos integraciones ────────────────────────────────────────
 type IntegrationType =
   | 'ERREKA_MQTT' | 'ERREKA_IP'
   | 'HIKVISION_ISAPI' | 'AXIS_VAPIX'
@@ -155,6 +189,18 @@ const STATUS_BADGE: Record<IntegrationStatus, { label: string; cls: string }> = 
   ERROR:      { label: 'Error',       cls: 'bg-red-100 text-red-700' },
   CONNECTING: { label: 'Conectando',  cls: 'bg-yellow-100 text-yellow-700' },
 };
+
+// ── Tabs ────────────────────────────────────────────────────────
+type ConfigTab = 'cuenta' | 'fraccionamiento' | 'cobros' | 'emergencias' | 'servicios' | 'integraciones';
+
+const TABS: { key: ConfigTab; label: string }[] = [
+  { key: 'cuenta',          label: 'Cuenta' },
+  { key: 'fraccionamiento', label: 'Fraccionamiento' },
+  { key: 'cobros',          label: 'Cobros' },
+  { key: 'emergencias',     label: 'Emergencias' },
+  { key: 'servicios',       label: 'Servicios QR' },
+  { key: 'integraciones',   label: 'Integraciones' },
+];
 
 // ── QrPosterModal ───────────────────────────────────────────────────────────
 
@@ -202,7 +248,6 @@ function QrPosterModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
          style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}>
 
-      {/* Botones de acción (fuera del poster, no se imprimen) */}
       <div className="absolute top-4 right-4 flex gap-2 z-10">
         <button
           onClick={handlePrint}
@@ -218,7 +263,6 @@ function QrPosterModal({
         </button>
       </div>
 
-      {/* Poster — diseño media carta */}
       <div
         ref={posterRef}
         style={{
@@ -232,13 +276,11 @@ function QrPosterModal({
           overflowY: 'auto',
         }}
       >
-        {/* Header verde */}
         <div style={{
           background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
           padding: '28px 28px 22px',
           position: 'relative',
         }}>
-          {/* Logo + nombre tenant */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '10px' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo3_ia2.png" alt="iaDoS" style={{ height: '44px', width: 'auto', filter: 'brightness(0) invert(1)' }} />
@@ -253,7 +295,6 @@ function QrPosterModal({
           </div>
         </div>
 
-        {/* Banda de título */}
         <div style={{
           background: '#f0fdf4',
           borderBottom: '2px solid #d1fae5',
@@ -268,7 +309,6 @@ function QrPosterModal({
           </div>
         </div>
 
-        {/* Servicios disponibles */}
         {services.length > 0 && (
           <div style={{ padding: '18px 28px 12px' }}>
             <div style={{ fontSize: '11px', fontWeight: '700', color: '#94a3b8', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '10px' }}>
@@ -289,7 +329,6 @@ function QrPosterModal({
           </div>
         )}
 
-        {/* Instrucción */}
         <div style={{ padding: '16px 28px 0', textAlign: 'center' }}>
           <div style={{
             background: 'linear-gradient(135deg, #ecfdf5, #d1fae5)',
@@ -306,7 +345,6 @@ function QrPosterModal({
           </div>
         </div>
 
-        {/* QR Code */}
         <div style={{ display: 'flex', justifyContent: 'center', padding: '22px 28px' }}>
           <div style={{
             background: '#ffffff',
@@ -332,10 +370,8 @@ function QrPosterModal({
           </div>
         </div>
 
-        {/* Separador */}
         <div style={{ height: '1px', background: 'linear-gradient(90deg, transparent, #e2e8f0, transparent)', margin: '0 28px' }} />
 
-        {/* Footer */}
         <div style={{
           background: '#f8fafc',
           padding: '16px 28px',
@@ -364,9 +400,7 @@ function QrPosterModal({
   );
 }
 
-// ── IntegrationModal — componente separado para evitar pérdida de foco ─────
-// Al estar fuera de ConfiguracionPage, los re-renders del padre no
-// desmontan ni vuelven a montar este componente, preservando el foco.
+// ── IntegrationModal ─────────────────────────────────────────────────────────
 interface IntegrationModalProps {
   isOpen: boolean;
   editingInt: Integration | null;
@@ -544,45 +578,73 @@ function IntegrationModal({ isOpen, editingInt, onClose, onSaved }: IntegrationM
   );
 }
 
+// ── Toggle helper ─────────────────────────────────────────────
+function Toggle({ value, onChange }: { value: boolean; onChange: () => void }) {
+  return (
+    <div
+      className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${value ? 'bg-emerald-500' : 'bg-slate-200'}`}
+      onClick={onChange}
+    >
+      <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${value ? 'translate-x-5' : ''}`} />
+    </div>
+  );
+}
+
 // ── Componente principal ───────────────────────────────────────
 export default function ConfiguracionPage() {
   const { user, tenantId, setTenant } = useAuthStore();
   const isAdmin    = user?.tenants?.find((t) => t.tenantId === tenantId)?.role === 'ADMIN';
   const isSuperAdmin = user?.isSuperAdmin === true;
 
-  // Lista de todos los tenants (solo SuperAdmin)
+  const canManage = isAdmin || isSuperAdmin;
+
+  // ── Tab ──
+  const [tab, setTab] = useState<ConfigTab>('cuenta');
+
+  // ── Tenant list (SuperAdmin) ──
   const [allTenants, setAllTenants] = useState<{ id: string; name: string }[]>([]);
 
-  // Cambiar contraseña
+  // ── Cuenta ──
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirm: '' });
   const [pwMsg, setPwMsg] = useState('');
   const [pwErr, setPwErr] = useState('');
 
-  // Datos del fraccionamiento
+  // ── Fraccionamiento ──
   const [tenantForm, setTenantForm] = useState({ name: '', address: '', phone: '', email: '' });
   const [tenantMsg, setTenantMsg] = useState('');
   const [tenantErr, setTenantErr] = useState('');
 
-  // Feature flags
+  // ── Feature flags ──
   const [flags, setFlags] = useState<FeatureFlags>({ ...DEFAULT_FLAGS });
   const [uiTheme, setUiTheme] = useState<'DARK' | 'LIGHT'>('DARK');
   const [flagsMsg, setFlagsMsg] = useState('');
   const [flagsErr, setFlagsErr] = useState('');
   const [savingFlags, setSavingFlags] = useState(false);
 
-  // Payment config
+  // ── Payment config ──
   const [paymentCfg, setPaymentCfg] = useState<PaymentConfig>({ ...DEFAULT_PAYMENT_CFG });
   const [paymentMsg, setPaymentMsg] = useState('');
   const [paymentErr, setPaymentErr] = useState('');
   const [savingPayment, setSavingPayment] = useState(false);
 
-  // Emergency numbers
+  // ── SaaS Cobro por Uso ──
+  const [saasCfg, setSaasCfg] = useState<SaasConfig>({ ...DEFAULT_SAAS_CFG });
+  const [billing, setBilling] = useState<BillingStatus | null>(null);
+  const [loadingBilling, setLoadingBilling] = useState(false);
+  const [saasCfgMsg, setSaasCfgMsg] = useState('');
+  const [saasCfgErr, setSaasCfgErr] = useState('');
+  const [savingSaas, setSavingSaas] = useState(false);
+  const [mpLoading, setMpLoading] = useState(false);
+  const [mpMsg, setMpMsg] = useState('');
+  const [mpErr, setMpErr] = useState('');
+
+  // ── Emergency numbers ──
   const [emergencyNums, setEmergencyNums] = useState<EmergencyNumber[]>([]);
   const [emergencyMsg, setEmergencyMsg] = useState('');
   const [emergencyErr, setEmergencyErr] = useState('');
   const [savingEmergency, setSavingEmergency] = useState(false);
 
-  // Service QR
+  // ── Service QR ──
   const [svcQrCfg, setSvcQrCfg] = useState<ServiceQrConfig>({ ...DEFAULT_SVC_QR });
   const [svcQrMsg, setSvcQrMsg] = useState('');
   const [svcQrErr, setSvcQrErr] = useState('');
@@ -591,17 +653,16 @@ export default function ConfiguracionPage() {
   const [newService, setNewService] = useState('');
   const [showQrPoster, setShowQrPoster] = useState(false);
 
-  // Dispositivos (para selectors en feature flags)
+  // ── Dispositivos (para selectors) ──
   const [devices, setDevices] = useState<{ id: string; name: string; status: string }[]>([]);
 
-  // Integraciones
+  // ── Integraciones ──
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [showIntModal, setShowIntModal] = useState(false);
   const [editingInt, setEditingInt] = useState<Integration | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
 
-  // ── Cargar lista de tenants para SuperAdmin — UNA SOLA VEZ al montar ──
-  // Dependencia vacía [] es intencional: isSuperAdmin no cambia en la sesión
+  // ── Cargar lista de tenants (SuperAdmin) — UNA VEZ ──
   useEffect(() => {
     if (!isSuperAdmin) return;
     tenantsApi.list().then((res: any) => {
@@ -610,8 +671,6 @@ export default function ConfiguracionPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Cargar datos del tenant cuando cambia tenantId ──
-  // SOLO [tenantId] como dep — canManage NO va en deps para evitar cascades
-  // cuando Zustand hidrata user y tenantId al mismo tiempo.
   useEffect(() => {
     if (!tenantId || (!isAdmin && !isSuperAdmin)) return;
     configApi.getTenant().then((res: any) => {
@@ -624,7 +683,6 @@ export default function ConfiguracionPage() {
       if (s.emergencyNumbers) setEmergencyNums(s.emergencyNumbers);
       if (s.serviceQrConfig) setSvcQrCfg({ ...DEFAULT_SVC_QR, ...s.serviceQrConfig });
     }).catch(() => {});
-    // Cargar QR actual de servicios
     serviceQrApi.currentQR().then((res: any) => {
       if (res.data?.url) setSvcQrUrl(res.data.url);
     }).catch(() => {});
@@ -634,13 +692,65 @@ export default function ConfiguracionPage() {
     }).catch(() => {});
   }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Cargar billing status cuando se entra al tab de cobros ──
+  useEffect(() => {
+    if (tab !== 'cobros' || !tenantId || !canManage) return;
+    if (isSuperAdmin) {
+      saasApi.config().then((res: any) => {
+        const c = res.data || {};
+        setSaasCfg({ ...DEFAULT_SAAS_CFG, ...c });
+      }).catch(() => {});
+    }
+    setLoadingBilling(true);
+    saasApi.status().then((res: any) => {
+      setBilling(res.data);
+    }).catch(() => {}).finally(() => setLoadingBilling(false));
+  }, [tab, tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Detectar redirect de MercadoPago al cargar la página ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const mpStatus = params.get('mp_status');
+    const mpRef    = params.get('mp_ref');
+    const tabParam = params.get('tab') as ConfigTab | null;
+
+    if (tabParam && TABS.some(t => t.key === tabParam)) {
+      setTab(tabParam);
+    }
+
+    if (mpStatus === 'approved' && mpRef) {
+      setTab('cobros');
+      setMpMsg('Verificando pago con MercadoPago...');
+      saasApi.verify(mpRef).then((res: any) => {
+        if (res.data?.verified) {
+          setMpMsg('✅ Pago confirmado correctamente');
+          saasApi.status().then((r: any) => setBilling(r.data)).catch(() => {});
+        } else {
+          setMpMsg('Pago recibido, en proceso de confirmación');
+        }
+      }).catch(() => {
+        setMpMsg('Pago recibido. Será confirmado en breve.');
+      });
+      window.history.replaceState({}, '', '/configuracion?tab=cobros');
+    } else if (mpStatus === 'failure') {
+      setTab('cobros');
+      setMpErr('El pago no fue completado. Puedes intentarlo nuevamente.');
+      window.history.replaceState({}, '', '/configuracion?tab=cobros');
+    } else if (mpStatus === 'pending') {
+      setTab('cobros');
+      setMpMsg('Pago en proceso. Te notificaremos cuando se confirme.');
+      window.history.replaceState({}, '', '/configuracion?tab=cobros');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   function loadIntegrations() {
     configApi.listIntegrations().then((res: any) => {
       setIntegrations(res.data || []);
     }).catch(() => {});
   }
 
-  // ── Contraseña ──
+  // ── Handlers cuenta ──
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPwMsg(''); setPwErr('');
@@ -654,7 +764,7 @@ export default function ConfiguracionPage() {
     }
   };
 
-  // ── Tenant ──
+  // ── Handlers fraccionamiento ──
   const handleUpdateTenant = async (e: React.FormEvent) => {
     e.preventDefault();
     setTenantMsg(''); setTenantErr('');
@@ -666,7 +776,6 @@ export default function ConfiguracionPage() {
     }
   };
 
-  // ── Feature flags ──
   const handleSaveFlags = async () => {
     setSavingFlags(true); setFlagsMsg(''); setFlagsErr('');
     try {
@@ -680,7 +789,7 @@ export default function ConfiguracionPage() {
     }
   };
 
-  // ── Payment config ──
+  // ── Handlers cobros ──
   const handleSavePaymentConfig = async () => {
     setSavingPayment(true); setPaymentMsg(''); setPaymentErr('');
     try {
@@ -722,7 +831,33 @@ export default function ConfiguracionPage() {
     setPaymentCfg((p) => ({ ...p, additionalCharges: p.additionalCharges.filter((_, i) => i !== idx) }));
   }
 
-  // ── Emergency numbers ──
+  // ── Handlers SaaS ──
+  const handleSaveSaasConfig = async () => {
+    setSavingSaas(true); setSaasCfgMsg(''); setSaasCfgErr('');
+    try {
+      await saasApi.updateConfig(saasCfg);
+      setSaasCfgMsg('Configuración guardada');
+      setTimeout(() => setSaasCfgMsg(''), 3000);
+      saasApi.status().then((res: any) => setBilling(res.data)).catch(() => {});
+    } catch (err) {
+      setSaasCfgErr(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setSavingSaas(false);
+    }
+  };
+
+  const handlePagarMP = async () => {
+    setMpLoading(true); setMpErr(''); setMpMsg('');
+    try {
+      const res: any = await saasApi.createPreference();
+      window.location.href = res.data.initPoint;
+    } catch (err) {
+      setMpErr(err instanceof Error ? err.message : 'Error al iniciar pago');
+      setMpLoading(false);
+    }
+  };
+
+  // ── Handlers emergencias ──
   const handleSaveEmergency = async () => {
     setSavingEmergency(true); setEmergencyMsg(''); setEmergencyErr('');
     try {
@@ -736,21 +871,15 @@ export default function ConfiguracionPage() {
     }
   };
 
-  function addEmergencyNumber() {
-    setEmergencyNums((n) => [...n, { ...EMPTY_EMERGENCY }]);
-  }
+  function addEmergencyNumber() { setEmergencyNums((n) => [...n, { ...EMPTY_EMERGENCY }]); }
   function updateEmergencyNumber(idx: number, field: keyof EmergencyNumber, value: string) {
-    setEmergencyNums((n) => {
-      const arr = [...n];
-      arr[idx] = { ...arr[idx], [field]: value };
-      return arr;
-    });
+    setEmergencyNums((n) => { const arr = [...n]; arr[idx] = { ...arr[idx], [field]: value }; return arr; });
   }
   function removeEmergencyNumber(idx: number) {
     setEmergencyNums((n) => n.filter((_, i) => i !== idx));
   }
 
-  // ── Service QR ──
+  // ── Handlers Service QR ──
   const handleSaveSvcQr = async () => {
     setSavingSvcQr(true); setSvcQrMsg(''); setSvcQrErr('');
     try {
@@ -782,20 +911,13 @@ export default function ConfiguracionPage() {
     setSvcQrCfg(c => ({ ...c, services: [...c.services, s] }));
     setNewService('');
   }
-
   function removeService(idx: number) {
     setSvcQrCfg(c => ({ ...c, services: c.services.filter((_, i) => i !== idx) }));
   }
 
-  // ── Integraciones ──
-  function openCreateModal() {
-    setEditingInt(null);
-    setShowIntModal(true);
-  }
-  function openEditModal(int: Integration) {
-    setEditingInt(int);
-    setShowIntModal(true);
-  }
+  // ── Handlers integraciones ──
+  function openCreateModal() { setEditingInt(null); setShowIntModal(true); }
+  function openEditModal(int: Integration) { setEditingInt(int); setShowIntModal(true); }
 
   const handleDeleteIntegration = async (id: string) => {
     if (!confirm('¿Eliminar esta integración?')) return;
@@ -807,256 +929,130 @@ export default function ConfiguracionPage() {
     setTestingId(id);
     try { await configApi.testIntegration(id); }
     catch { /* ignored */ }
-    finally {
-      setTestingId(null);
-      loadIntegrations();
-    }
+    finally { setTestingId(null); loadIntegrations(); }
   };
 
-  const canManage = isAdmin || isSuperAdmin;
+  // ── Render ─────────────────────────────────────────────────────
+  const statusLabels: Record<string, { label: string; cls: string }> = {
+    PAID:    { label: 'Pagado',   cls: 'bg-green-100 text-green-700' },
+    PENDING: { label: 'Pendiente', cls: 'bg-amber-100 text-amber-700' },
+    OVERDUE: { label: 'Vencido',  cls: 'bg-red-100 text-red-700' },
+  };
 
   return (
     <div>
       <PageHeader title="Configuración" subtitle="Preferencias de cuenta y sistema" />
 
-      {/* ── Gestión de cobro ── */}
-      {canManage && (
-        <div className="glass-card mb-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="font-semibold text-slate-700">Gestión de cobro</h3>
-              <p className="text-sm text-slate-500 mt-0.5">Cuotas de mantenimiento y cuentas bancarias para transferencias</p>
-            </div>
-            <button onClick={handleSavePaymentConfig} disabled={savingPayment} className="btn-primary text-sm disabled:opacity-60">
-              {savingPayment ? 'Guardando...' : 'Guardar'}
-            </button>
-          </div>
+      {/* ── Tabs ── */}
+      <div className="flex gap-1 mb-6 bg-white/50 p-1 rounded-xl flex-wrap">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              tab === t.key ? 'bg-white shadow-sm text-primary-700' : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-          {paymentMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{paymentMsg}</div>}
-          {paymentErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{paymentErr}</div>}
+      {/* ══════════════════════════════════
+          TAB: CUENTA
+         ══════════════════════════════════ */}
+      {tab === 'cuenta' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-          {/* Cuota mensual */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Cuota mensual</label>
-              <div className="flex gap-2">
-                <select className="text-sm border border-slate-200 rounded-xl px-2 py-2 bg-white w-20"
-                  value={paymentCfg.currency}
-                  onChange={(e) => setPaymentCfg({ ...paymentCfg, currency: e.target.value })}>
-                  <option value="MXN">MXN</option>
-                  <option value="USD">USD</option>
-                </select>
-                <input type="number" min={0} step={0.01} className="input-field flex-1" placeholder="0.00"
-                  value={paymentCfg.monthlyAmount || ''}
-                  onChange={(e) => setPaymentCfg({ ...paymentCfg, monthlyAmount: parseFloat(e.target.value) || 0 })} />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Concepto de pago</label>
-              <input type="text" className="input-field" placeholder="ej. Cuota de mantenimiento"
-                value={paymentCfg.paymentConcept}
-                onChange={(e) => setPaymentCfg({ ...paymentCfg, paymentConcept: e.target.value })} />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
+          {/* Info de cuenta */}
+          <div className="glass-card">
+            <h3 className="font-semibold text-slate-700 mb-4">Información de cuenta</h3>
+            <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Día de cobro</label>
-                <input type="number" min={1} max={31} className="input-field" placeholder="5"
-                  value={paymentCfg.dueDayOfMonth || ''}
-                  onChange={(e) => setPaymentCfg({ ...paymentCfg, dueDayOfMonth: parseInt(e.target.value) || 0 })} />
+                <label className="text-xs text-slate-500">Nombre</label>
+                <p className="font-medium text-slate-800">{user?.firstName} {user?.lastName}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Días gracia</label>
-                <input type="number" min={0} max={30} className="input-field" placeholder="0"
-                  value={paymentCfg.gracePeriodDays ?? ''}
-                  onChange={(e) => setPaymentCfg({ ...paymentCfg, gracePeriodDays: parseInt(e.target.value) || 0 })} />
+                <label className="text-xs text-slate-500">Email</label>
+                <p className="font-medium text-slate-800">{user?.email}</p>
               </div>
             </div>
           </div>
 
-          {/* Cuentas bancarias */}
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Cuentas bancarias</h4>
-              <button onClick={addBankAccount} className="text-sm text-primary-600 hover:text-primary-700 font-medium">+ Agregar cuenta</button>
+          {/* Selector de tenant — SuperAdmin */}
+          {isSuperAdmin && allTenants.length > 0 && (
+            <div className="glass-card">
+              <h3 className="font-semibold text-slate-700 mb-4">Fraccionamiento activo</h3>
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                {allTenants.map((t) => (
+                  <button key={t.id} onClick={() => setTenant(t.id)}
+                    className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
+                      tenantId === t.id
+                        ? 'border-primary-400 bg-primary-50 text-primary-700'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}>
+                    <p className="font-medium">{t.name}</p>
+                    <p className="text-xs text-slate-500">SuperAdmin</p>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="space-y-3">
-              {paymentCfg.bankAccounts.map((acc, idx) => (
-                <div key={idx} className="border border-slate-200 rounded-xl p-4 bg-white/60">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Banco</label>
-                      <input type="text" className="input-field text-sm" placeholder="ej. BBVA"
-                        value={acc.bankName} onChange={(e) => updateBankAccount(idx, 'bankName', e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Titular de la cuenta</label>
-                      <input type="text" className="input-field text-sm" placeholder="ej. Fracc. Los Pinos"
-                        value={acc.accountHolder} onChange={(e) => updateBankAccount(idx, 'accountHolder', e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">CLABE interbancaria (18 dígitos)</label>
-                      <input type="text" className="input-field text-sm" placeholder="012180001234567890" maxLength={18}
-                        value={acc.clabe} onChange={(e) => updateBankAccount(idx, 'clabe', e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Número de cuenta</label>
-                      <input type="text" className="input-field text-sm" placeholder="10-11 dígitos"
-                        value={acc.accountNumber} onChange={(e) => updateBankAccount(idx, 'accountNumber', e.target.value)} />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-xs text-slate-500 mb-1">Referencia de pago</label>
-                      <input type="text" className="input-field text-sm" placeholder="ej. MANT-101-MAR"
-                        value={acc.referenceTemplate} onChange={(e) => updateBankAccount(idx, 'referenceTemplate', e.target.value)} />
-                    </div>
-                  </div>
-                  <div className="flex justify-end mt-3">
-                    <button onClick={() => removeBankAccount(idx)} className="text-xs text-red-500 hover:text-red-700 font-medium">
-                      Eliminar cuenta
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {paymentCfg.bankAccounts.length === 0 && (
-                <div className="text-center py-6 text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                  <p className="text-sm">No hay cuentas bancarias. Agrega al menos una para que los residentes puedan hacer transferencias.</p>
-                </div>
-              )}
-            </div>
-          </div>
+          )}
 
-          {/* Cuotas adicionales */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Cuotas adicionales</h4>
-              <button onClick={addAdditionalCharge} className="text-sm text-primary-600 hover:text-primary-700 font-medium">+ Agregar cuota</button>
+          {/* Selector de tenant — Admin multi-tenant */}
+          {!isSuperAdmin && user && user.tenants.length > 1 && (
+            <div className="glass-card">
+              <h3 className="font-semibold text-slate-700 mb-4">Fraccionamiento activo</h3>
+              <div className="space-y-2">
+                {user.tenants.map((t) => (
+                  <button key={t.tenantId} onClick={() => setTenant(t.tenantId)}
+                    className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
+                      tenantId === t.tenantId
+                        ? 'border-primary-400 bg-primary-50 text-primary-700'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}>
+                    <p className="font-medium">{t.tenantName}</p>
+                    <p className="text-xs text-slate-500">{t.role}</p>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="space-y-3">
-              {paymentCfg.additionalCharges.map((charge, idx) => (
-                <div key={idx} className="border border-slate-200 rounded-xl p-4 bg-white/60">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Concepto</label>
-                      <input type="text" className="input-field text-sm" placeholder="ej. Cuota extraordinaria"
-                        value={charge.name} onChange={(e) => updateAdditionalCharge(idx, 'name', e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Monto ({paymentCfg.currency})</label>
-                      <input type="number" min={0} step={0.01} className="input-field text-sm" placeholder="0.00"
-                        value={charge.amount || ''}
-                        onChange={(e) => updateAdditionalCharge(idx, 'amount', parseFloat(e.target.value) || 0)} />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Fecha límite</label>
-                      <input type="date" className="input-field text-sm"
-                        value={charge.dueDate} onChange={(e) => updateAdditionalCharge(idx, 'dueDate', e.target.value)} />
-                    </div>
-                    <div className="md:col-span-3">
-                      <label className="block text-xs text-slate-500 mb-1">Descripción</label>
-                      <input type="text" className="input-field text-sm" placeholder="Descripción opcional"
-                        value={charge.description} onChange={(e) => updateAdditionalCharge(idx, 'description', e.target.value)} />
-                    </div>
-                  </div>
-                  <div className="flex justify-end mt-3">
-                    <button onClick={() => removeAdditionalCharge(idx)} className="text-xs text-red-500 hover:text-red-700 font-medium">
-                      Eliminar cuota
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {paymentCfg.additionalCharges.length === 0 && (
-                <div className="text-center py-6 text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                  <p className="text-sm">No hay cuotas adicionales configuradas</p>
-                </div>
-              )}
-            </div>
+          )}
+
+          {/* Cambiar contraseña */}
+          <div className="glass-card">
+            <h3 className="font-semibold text-slate-700 mb-4">Cambiar contraseña</h3>
+            {pwMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{pwMsg}</div>}
+            {pwErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{pwErr}</div>}
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña actual</label>
+                <input type="password" className="input-field" value={pwForm.currentPassword}
+                  onChange={(e) => setPwForm({ ...pwForm, currentPassword: e.target.value })} required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nueva contraseña</label>
+                <input type="password" className="input-field" value={pwForm.newPassword} minLength={6}
+                  onChange={(e) => setPwForm({ ...pwForm, newPassword: e.target.value })} required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Confirmar contraseña</label>
+                <input type="password" className="input-field" value={pwForm.confirm}
+                  onChange={(e) => setPwForm({ ...pwForm, confirm: e.target.value })} required />
+              </div>
+              <button type="submit" className="btn-primary">Actualizar contraseña</button>
+            </form>
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* ══════════════════════════════════
+          TAB: FRACCIONAMIENTO
+         ══════════════════════════════════ */}
+      {tab === 'fraccionamiento' && canManage && (
+        <div className="space-y-6">
 
-        {/* ── Info de cuenta ── */}
-        <div className="glass-card">
-          <h3 className="font-semibold text-slate-700 mb-4">Información de cuenta</h3>
-          <div className="space-y-3">
-            <div>
-              <label className="text-xs text-slate-500">Nombre</label>
-              <p className="font-medium text-slate-800">{user?.firstName} {user?.lastName}</p>
-            </div>
-            <div>
-              <label className="text-xs text-slate-500">Email</label>
-              <p className="font-medium text-slate-800">{user?.email}</p>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Selector de tenant — SuperAdmin: todos los fraccionamientos ── */}
-        {isSuperAdmin && allTenants.length > 0 && (
-          <div className="glass-card">
-            <h3 className="font-semibold text-slate-700 mb-4">Fraccionamiento activo</h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-              {allTenants.map((t) => (
-                <button key={t.id} onClick={() => setTenant(t.id)}
-                  className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
-                    tenantId === t.id
-                      ? 'border-primary-400 bg-primary-50 text-primary-700'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}>
-                  <p className="font-medium">{t.name}</p>
-                  <p className="text-xs text-slate-500">SuperAdmin</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Selector de tenant — Admin multi-tenant ── */}
-        {!isSuperAdmin && user && user.tenants.length > 1 && (
-          <div className="glass-card">
-            <h3 className="font-semibold text-slate-700 mb-4">Fraccionamiento activo</h3>
-            <div className="space-y-2">
-              {user.tenants.map((t) => (
-                <button key={t.tenantId} onClick={() => setTenant(t.tenantId)}
-                  className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
-                    tenantId === t.tenantId
-                      ? 'border-primary-400 bg-primary-50 text-primary-700'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}>
-                  <p className="font-medium">{t.tenantName}</p>
-                  <p className="text-xs text-slate-500">{t.role}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── Cambiar contraseña ── */}
-        <div className="glass-card">
-          <h3 className="font-semibold text-slate-700 mb-4">Cambiar contraseña</h3>
-          {pwMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{pwMsg}</div>}
-          {pwErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{pwErr}</div>}
-          <form onSubmit={handleChangePassword} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Contraseña actual</label>
-              <input type="password" className="input-field" value={pwForm.currentPassword}
-                onChange={(e) => setPwForm({ ...pwForm, currentPassword: e.target.value })} required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nueva contraseña</label>
-              <input type="password" className="input-field" value={pwForm.newPassword} minLength={6}
-                onChange={(e) => setPwForm({ ...pwForm, newPassword: e.target.value })} required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Confirmar contraseña</label>
-              <input type="password" className="input-field" value={pwForm.confirm}
-                onChange={(e) => setPwForm({ ...pwForm, confirm: e.target.value })} required />
-            </div>
-            <button type="submit" className="btn-primary">Actualizar contraseña</button>
-          </form>
-        </div>
-
-        {/* ── Datos del fraccionamiento ── */}
-        {canManage && (
+          {/* Datos del fraccionamiento */}
           <div className="glass-card">
             <h3 className="font-semibold text-slate-700 mb-4">Datos del fraccionamiento</h3>
             {tenantMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{tenantMsg}</div>}
@@ -1087,156 +1083,496 @@ export default function ConfiguracionPage() {
               <button type="submit" className="btn-primary">Guardar cambios</button>
             </form>
           </div>
-        )}
-      </div>
 
-      {/* ── Feature flags ── */}
-      {canManage && (
-        <div className="glass-card mt-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h3 className="font-semibold text-slate-700">Funciones de acceso</h3>
-              <p className="text-sm text-slate-500 mt-0.5">Configura qué botones aparecen en la app móvil</p>
+          {/* Feature flags */}
+          <div className="glass-card">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="font-semibold text-slate-700">Funciones de acceso</h3>
+                <p className="text-sm text-slate-500 mt-0.5">Configura qué botones aparecen en la app móvil</p>
+              </div>
+              <button onClick={handleSaveFlags} disabled={savingFlags} className="btn-primary text-sm disabled:opacity-60">
+                {savingFlags ? 'Guardando...' : 'Guardar'}
+              </button>
             </div>
-            <button onClick={handleSaveFlags} disabled={savingFlags} className="btn-primary text-sm disabled:opacity-60">
-              {savingFlags ? 'Guardando...' : 'Guardar'}
-            </button>
-          </div>
 
-          {flagsMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{flagsMsg}</div>}
-          {flagsErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{flagsErr}</div>}
+            {flagsMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{flagsMsg}</div>}
+            {flagsErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{flagsErr}</div>}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Botones de acceso</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Botones de acceso</h4>
 
-              {/* Residentes */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <label className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-50">
-                  <span className="text-sm text-slate-700">Botón acceso residentes</span>
-                  <div className={`relative w-11 h-6 rounded-full transition-colors ${flags.showResidentAccessButton ? 'bg-emerald-500' : 'bg-slate-200'}`}
-                    onClick={() => setFlags({ ...flags, showResidentAccessButton: !flags.showResidentAccessButton })}>
-                    <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${flags.showResidentAccessButton ? 'translate-x-5' : ''}`} />
-                  </div>
+                {/* Residentes */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <label className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-50">
+                    <span className="text-sm text-slate-700">Botón acceso residentes</span>
+                    <Toggle value={flags.showResidentAccessButton} onChange={() => setFlags({ ...flags, showResidentAccessButton: !flags.showResidentAccessButton })} />
+                  </label>
+                  {flags.showResidentAccessButton && (
+                    <div className="border-t border-slate-100 px-3 py-2 bg-slate-50/50 space-y-2">
+                      {([
+                        { label: 'Dispositivo entrada', field: 'residentEntryDeviceId' as const },
+                        ...(flags.showExitButton ? [{ label: 'Dispositivo salida', field: 'residentExitDeviceId' as const }] : []),
+                      ]).map(({ label, field }) => (
+                        <div key={field} className="flex items-center gap-2">
+                          <span className="text-xs text-slate-500 w-28 shrink-0">{label}:</span>
+                          <select className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
+                            value={flags[field]}
+                            onChange={(e) => setFlags({ ...flags, [field]: e.target.value })}>
+                            <option value="">— Sin dispositivo —</option>
+                            {devices.map(d => (
+                              <option key={d.id} value={d.id}>{d.name}{d.status === 'OFFLINE' ? ' (Offline)' : ''}</option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Visitas */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <label className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-50">
+                    <span className="text-sm text-slate-700">Botón acceso visitas</span>
+                    <Toggle value={flags.showVisitorAccessButton} onChange={() => setFlags({ ...flags, showVisitorAccessButton: !flags.showVisitorAccessButton })} />
+                  </label>
+                  {flags.showVisitorAccessButton && (
+                    <div className="border-t border-slate-100 px-3 py-2 bg-slate-50/50 space-y-2">
+                      {([
+                        { label: 'Dispositivo entrada', field: 'visitorEntryDeviceId' as const },
+                        ...(flags.showExitButton ? [{ label: 'Dispositivo salida', field: 'visitorExitDeviceId' as const }] : []),
+                      ]).map(({ label, field }) => (
+                        <div key={field} className="flex items-center gap-2">
+                          <span className="text-xs text-slate-500 w-28 shrink-0">{label}:</span>
+                          <select className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
+                            value={flags[field]}
+                            onChange={(e) => setFlags({ ...flags, [field]: e.target.value })}>
+                            <option value="">— Sin dispositivo —</option>
+                            {devices.map(d => (
+                              <option key={d.id} value={d.id}>{d.name}{d.status === 'OFFLINE' ? ' (Offline)' : ''}</option>
+                            ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Salida */}
+                <label className="flex items-center justify-between p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
+                  <span className="text-sm text-slate-700">Mostrar botón de salida</span>
+                  <Toggle value={flags.showExitButton} onChange={() => setFlags({ ...flags, showExitButton: !flags.showExitButton })} />
                 </label>
-                {flags.showResidentAccessButton && (
-                  <div className="border-t border-slate-100 px-3 py-2 bg-slate-50/50 space-y-2">
-                    {([
-                      { label: 'Dispositivo entrada', field: 'residentEntryDeviceId' as const },
-                      ...(flags.showExitButton ? [{ label: 'Dispositivo salida', field: 'residentExitDeviceId' as const }] : []),
-                    ]).map(({ label, field }) => (
-                      <div key={field} className="flex items-center gap-2">
-                        <span className="text-xs text-slate-500 w-28 shrink-0">{label}:</span>
-                        <select className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
-                          value={flags[field]}
-                          onChange={(e) => setFlags({ ...flags, [field]: e.target.value })}>
-                          <option value="">— Sin dispositivo —</option>
-                          {devices.map(d => (
-                            <option key={d.id} value={d.id}>{d.name}{d.status === 'OFFLINE' ? ' (Offline)' : ''}</option>
-                          ))}
-                        </select>
-                      </div>
-                    ))}
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">QR Rápido</h4>
+                <label className="flex items-center justify-between p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
+                  <span className="text-sm text-slate-700">Habilitar QR rápido (Uber, Delivery…)</span>
+                  <Toggle value={flags.quickQrEnabled} onChange={() => setFlags({ ...flags, quickQrEnabled: !flags.quickQrEnabled })} />
+                </label>
+                {flags.quickQrEnabled && (
+                  <>
+                    <div>
+                      <label className="block text-sm text-slate-600 mb-1">
+                        Duración del QR: <span className="font-semibold text-slate-800">{flags.quickQrDurationHours}h</span>
+                      </label>
+                      <input type="range" min={1} max={24} value={flags.quickQrDurationHours}
+                        onChange={(e) => setFlags({ ...flags, quickQrDurationHours: Number(e.target.value) })}
+                        className="w-full accent-emerald-500" />
+                      <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>1h</span><span>24h</span></div>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-slate-600 mb-1">
+                        Usos máximos: <span className="font-semibold text-slate-800">{flags.quickQrMaxUses}</span>
+                      </label>
+                      <input type="range" min={1} max={10} value={flags.quickQrMaxUses}
+                        onChange={(e) => setFlags({ ...flags, quickQrMaxUses: Number(e.target.value) })}
+                        className="w-full accent-emerald-500" />
+                      <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>1</span><span>10</span></div>
+                    </div>
+                  </>
+                )}
+
+                {isSuperAdmin && (
+                  <div className="pt-2 border-t border-slate-100">
+                    <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Tema de la app</h4>
+                    <div className="flex gap-3">
+                      {(['DARK', 'LIGHT'] as const).map((t) => (
+                        <button key={t} onClick={() => setUiTheme(t)}
+                          className={`flex-1 py-2 rounded-xl border text-sm font-medium transition-all ${uiTheme === t ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
+                          {t === 'DARK' ? '🌙 Oscuro' : '☀️ Claro'}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
-
-              {/* Visitas */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
-                <label className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-50">
-                  <span className="text-sm text-slate-700">Botón acceso visitas</span>
-                  <div className={`relative w-11 h-6 rounded-full transition-colors ${flags.showVisitorAccessButton ? 'bg-emerald-500' : 'bg-slate-200'}`}
-                    onClick={() => setFlags({ ...flags, showVisitorAccessButton: !flags.showVisitorAccessButton })}>
-                    <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${flags.showVisitorAccessButton ? 'translate-x-5' : ''}`} />
-                  </div>
-                </label>
-                {flags.showVisitorAccessButton && (
-                  <div className="border-t border-slate-100 px-3 py-2 bg-slate-50/50 space-y-2">
-                    {([
-                      { label: 'Dispositivo entrada', field: 'visitorEntryDeviceId' as const },
-                      ...(flags.showExitButton ? [{ label: 'Dispositivo salida', field: 'visitorExitDeviceId' as const }] : []),
-                    ]).map(({ label, field }) => (
-                      <div key={field} className="flex items-center gap-2">
-                        <span className="text-xs text-slate-500 w-28 shrink-0">{label}:</span>
-                        <select className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white"
-                          value={flags[field]}
-                          onChange={(e) => setFlags({ ...flags, [field]: e.target.value })}>
-                          <option value="">— Sin dispositivo —</option>
-                          {devices.map(d => (
-                            <option key={d.id} value={d.id}>{d.name}{d.status === 'OFFLINE' ? ' (Offline)' : ''}</option>
-                          ))}
-                        </select>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Salida toggle */}
-              <label className="flex items-center justify-between p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
-                <span className="text-sm text-slate-700">Mostrar botón de salida</span>
-                <div className={`relative w-11 h-6 rounded-full transition-colors ${flags.showExitButton ? 'bg-emerald-500' : 'bg-slate-200'}`}
-                  onClick={() => setFlags({ ...flags, showExitButton: !flags.showExitButton })}>
-                  <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${flags.showExitButton ? 'translate-x-5' : ''}`} />
-                </div>
-              </label>
-            </div>
-
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">QR Rápido</h4>
-              <label className="flex items-center justify-between p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
-                <span className="text-sm text-slate-700">Habilitar QR rápido (Uber, Delivery…)</span>
-                <div
-                  className={`relative w-11 h-6 rounded-full transition-colors ${flags.quickQrEnabled ? 'bg-emerald-500' : 'bg-slate-200'}`}
-                  onClick={() => setFlags({ ...flags, quickQrEnabled: !flags.quickQrEnabled })}
-                >
-                  <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${flags.quickQrEnabled ? 'translate-x-5' : ''}`} />
-                </div>
-              </label>
-              {flags.quickQrEnabled && (
-                <>
-                  <div>
-                    <label className="block text-sm text-slate-600 mb-1">
-                      Duración del QR: <span className="font-semibold text-slate-800">{flags.quickQrDurationHours}h</span>
-                    </label>
-                    <input type="range" min={1} max={24} value={flags.quickQrDurationHours}
-                      onChange={(e) => setFlags({ ...flags, quickQrDurationHours: Number(e.target.value) })}
-                      className="w-full accent-emerald-500" />
-                    <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>1h</span><span>24h</span></div>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-slate-600 mb-1">
-                      Usos máximos: <span className="font-semibold text-slate-800">{flags.quickQrMaxUses}</span>
-                    </label>
-                    <input type="range" min={1} max={10} value={flags.quickQrMaxUses}
-                      onChange={(e) => setFlags({ ...flags, quickQrMaxUses: Number(e.target.value) })}
-                      className="w-full accent-emerald-500" />
-                    <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>1</span><span>10</span></div>
-                  </div>
-                </>
-              )}
-
-              {isSuperAdmin && (
-                <div className="pt-2 border-t border-slate-100">
-                  <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Tema de la app</h4>
-                  <div className="flex gap-3">
-                    {(['DARK', 'LIGHT'] as const).map((t) => (
-                      <button key={t} onClick={() => setUiTheme(t)}
-                        className={`flex-1 py-2 rounded-xl border text-sm font-medium transition-all ${uiTheme === t ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>
-                        {t === 'DARK' ? '🌙 Oscuro' : '☀️ Claro'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Números de emergencia ── */}
-      {canManage && (
-        <div className="glass-card mt-6">
+      {/* ══════════════════════════════════
+          TAB: COBROS
+         ══════════════════════════════════ */}
+      {tab === 'cobros' && canManage && (
+        <div className="space-y-6">
+
+          {/* ── Gestión de cobro (cuotas de mantenimiento) ── */}
+          <div className="glass-card">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="font-semibold text-slate-700">Gestión de cobro</h3>
+                <p className="text-sm text-slate-500 mt-0.5">Cuotas de mantenimiento y cuentas bancarias para transferencias</p>
+              </div>
+              <button onClick={handleSavePaymentConfig} disabled={savingPayment} className="btn-primary text-sm disabled:opacity-60">
+                {savingPayment ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+
+            {paymentMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{paymentMsg}</div>}
+            {paymentErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{paymentErr}</div>}
+
+            {/* Cuota mensual */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Cuota mensual</label>
+                <div className="flex gap-2">
+                  <select className="text-sm border border-slate-200 rounded-xl px-2 py-2 bg-white w-20"
+                    value={paymentCfg.currency}
+                    onChange={(e) => setPaymentCfg({ ...paymentCfg, currency: e.target.value })}>
+                    <option value="MXN">MXN</option>
+                    <option value="USD">USD</option>
+                  </select>
+                  <input type="number" min={0} step={0.01} className="input-field flex-1" placeholder="0.00"
+                    value={paymentCfg.monthlyAmount || ''}
+                    onChange={(e) => setPaymentCfg({ ...paymentCfg, monthlyAmount: parseFloat(e.target.value) || 0 })} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Concepto de pago</label>
+                <input type="text" className="input-field" placeholder="ej. Cuota de mantenimiento"
+                  value={paymentCfg.paymentConcept}
+                  onChange={(e) => setPaymentCfg({ ...paymentCfg, paymentConcept: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Día de cobro</label>
+                  <input type="number" min={1} max={31} className="input-field" placeholder="5"
+                    value={paymentCfg.dueDayOfMonth || ''}
+                    onChange={(e) => setPaymentCfg({ ...paymentCfg, dueDayOfMonth: parseInt(e.target.value) || 0 })} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Días gracia</label>
+                  <input type="number" min={0} max={30} className="input-field" placeholder="0"
+                    value={paymentCfg.gracePeriodDays ?? ''}
+                    onChange={(e) => setPaymentCfg({ ...paymentCfg, gracePeriodDays: parseInt(e.target.value) || 0 })} />
+                </div>
+              </div>
+            </div>
+
+            {/* Cuentas bancarias */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Cuentas bancarias</h4>
+                <button onClick={addBankAccount} className="text-sm text-primary-600 hover:text-primary-700 font-medium">+ Agregar cuenta</button>
+              </div>
+              <div className="space-y-3">
+                {paymentCfg.bankAccounts.map((acc, idx) => (
+                  <div key={idx} className="border border-slate-200 rounded-xl p-4 bg-white/60">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Banco</label>
+                        <input type="text" className="input-field text-sm" placeholder="ej. BBVA"
+                          value={acc.bankName} onChange={(e) => updateBankAccount(idx, 'bankName', e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Titular de la cuenta</label>
+                        <input type="text" className="input-field text-sm" placeholder="ej. Fracc. Los Pinos"
+                          value={acc.accountHolder} onChange={(e) => updateBankAccount(idx, 'accountHolder', e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">CLABE interbancaria (18 dígitos)</label>
+                        <input type="text" className="input-field text-sm" placeholder="012180001234567890" maxLength={18}
+                          value={acc.clabe} onChange={(e) => updateBankAccount(idx, 'clabe', e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Número de cuenta</label>
+                        <input type="text" className="input-field text-sm" placeholder="10-11 dígitos"
+                          value={acc.accountNumber} onChange={(e) => updateBankAccount(idx, 'accountNumber', e.target.value)} />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-xs text-slate-500 mb-1">Referencia de pago</label>
+                        <input type="text" className="input-field text-sm" placeholder="ej. MANT-101-MAR"
+                          value={acc.referenceTemplate} onChange={(e) => updateBankAccount(idx, 'referenceTemplate', e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="flex justify-end mt-3">
+                      <button onClick={() => removeBankAccount(idx)} className="text-xs text-red-500 hover:text-red-700 font-medium">
+                        Eliminar cuenta
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {paymentCfg.bankAccounts.length === 0 && (
+                  <div className="text-center py-6 text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                    <p className="text-sm">No hay cuentas bancarias configuradas.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Cuotas adicionales */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Cuotas adicionales</h4>
+                <button onClick={addAdditionalCharge} className="text-sm text-primary-600 hover:text-primary-700 font-medium">+ Agregar cuota</button>
+              </div>
+              <div className="space-y-3">
+                {paymentCfg.additionalCharges.map((charge, idx) => (
+                  <div key={idx} className="border border-slate-200 rounded-xl p-4 bg-white/60">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Concepto</label>
+                        <input type="text" className="input-field text-sm" placeholder="ej. Cuota extraordinaria"
+                          value={charge.name} onChange={(e) => updateAdditionalCharge(idx, 'name', e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Monto ({paymentCfg.currency})</label>
+                        <input type="number" min={0} step={0.01} className="input-field text-sm" placeholder="0.00"
+                          value={charge.amount || ''}
+                          onChange={(e) => updateAdditionalCharge(idx, 'amount', parseFloat(e.target.value) || 0)} />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-slate-500 mb-1">Fecha límite</label>
+                        <input type="date" className="input-field text-sm"
+                          value={charge.dueDate} onChange={(e) => updateAdditionalCharge(idx, 'dueDate', e.target.value)} />
+                      </div>
+                      <div className="md:col-span-3">
+                        <label className="block text-xs text-slate-500 mb-1">Descripción</label>
+                        <input type="text" className="input-field text-sm" placeholder="Descripción opcional"
+                          value={charge.description} onChange={(e) => updateAdditionalCharge(idx, 'description', e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="flex justify-end mt-3">
+                      <button onClick={() => removeAdditionalCharge(idx)} className="text-xs text-red-500 hover:text-red-700 font-medium">
+                        Eliminar cuota
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {paymentCfg.additionalCharges.length === 0 && (
+                  <div className="text-center py-6 text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                    <p className="text-sm">No hay cuotas adicionales configuradas</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Cobro por Uso (SaaS) ── */}
+          <div className="glass-card">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="font-semibold text-slate-700">Cobro por Uso</h3>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Facturación mensual del servicio iaDoS — {billing?.activeUnits ?? '…'} unidades activas
+                </p>
+              </div>
+              {isSuperAdmin && (
+                <button onClick={handleSaveSaasConfig} disabled={savingSaas} className="btn-primary text-sm disabled:opacity-60">
+                  {savingSaas ? 'Guardando...' : 'Guardar config'}
+                </button>
+              )}
+            </div>
+
+            {saasCfgMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{saasCfgMsg}</div>}
+            {saasCfgErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{saasCfgErr}</div>}
+            {mpMsg      && <div className="bg-blue-50 text-blue-700 text-sm px-4 py-2 rounded-xl mb-4">{mpMsg}</div>}
+            {mpErr      && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{mpErr}</div>}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+              {/* Columna izquierda — Configuración (solo SuperAdmin) */}
+              {isSuperAdmin && (
+                <div className="space-y-4">
+                  <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Configuración (SuperAdmin)</h4>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Precio por unidad (MXN)</label>
+                      <input type="number" min={0} step={0.01} className="input-field"
+                        value={saasCfg.pricePerUnit || ''}
+                        onChange={(e) => setSaasCfg({ ...saasCfg, pricePerUnit: parseFloat(e.target.value) || 0 })} />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Día de facturación</label>
+                      <input type="number" min={1} max={28} className="input-field"
+                        value={saasCfg.billingDay || ''}
+                        onChange={(e) => setSaasCfg({ ...saasCfg, billingDay: parseInt(e.target.value) || 1 })} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Días de gracia</label>
+                    <input type="number" min={0} max={30} className="input-field"
+                      value={saasCfg.gracePeriodDays ?? ''}
+                      onChange={(e) => setSaasCfg({ ...saasCfg, gracePeriodDays: parseInt(e.target.value) || 0 })} />
+                    <p className="text-xs text-slate-400 mt-1">Días adicionales después del día de facturación antes de marcar como vencido</p>
+                  </div>
+
+                  <label className="flex items-center justify-between p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
+                    <div>
+                      <p className="text-sm text-slate-700">Notificar si hay retraso en el pago</p>
+                      <p className="text-xs text-slate-400">Enviar notificación FCM al administrador</p>
+                    </div>
+                    <Toggle value={saasCfg.notifyOnOverdue} onChange={() => setSaasCfg({ ...saasCfg, notifyOnOverdue: !saasCfg.notifyOnOverdue })} />
+                  </label>
+
+                  <div className="border-t border-slate-100 pt-4">
+                    <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-3">MercadoPago</h4>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Access Token</label>
+                        <input type="password" className="input-field font-mono text-sm" placeholder="APP_USR-..."
+                          value={saasCfg.mpAccessToken}
+                          onChange={(e) => setSaasCfg({ ...saasCfg, mpAccessToken: e.target.value })} />
+                        <p className="text-xs text-slate-400 mt-1">Token privado — nunca se muestra al admin</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Public Key</label>
+                        <input type="text" className="input-field font-mono text-sm" placeholder="APP_USR-..."
+                          value={saasCfg.mpPublicKey}
+                          onChange={(e) => setSaasCfg({ ...saasCfg, mpPublicKey: e.target.value })} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Columna derecha — Estado de facturación */}
+              <div className="space-y-4">
+                <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Estado de facturación</h4>
+
+                {loadingBilling ? (
+                  <div className="text-center py-8 text-slate-400">
+                    <div className="animate-spin w-6 h-6 border-2 border-slate-300 border-t-primary-500 rounded-full mx-auto mb-2" />
+                    <p className="text-sm">Cargando...</p>
+                  </div>
+                ) : billing ? (
+                  <>
+                    {/* Resumen del período */}
+                    <div className={`rounded-xl p-4 border ${billing.isOverdue ? 'bg-red-50 border-red-200' : billing.currentPayment?.status === 'PAID' ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Período actual</p>
+                          <p className="text-2xl font-bold text-slate-800">{billing.period}</p>
+                        </div>
+                        {billing.currentPayment ? (
+                          <span className={`text-xs font-semibold px-3 py-1 rounded-full ${statusLabels[billing.currentPayment.status]?.cls || 'bg-slate-100 text-slate-600'}`}>
+                            {statusLabels[billing.currentPayment.status]?.label || billing.currentPayment.status}
+                          </span>
+                        ) : (
+                          <span className="text-xs font-semibold px-3 py-1 rounded-full bg-amber-100 text-amber-700">Sin registrar</span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3 text-center">
+                        <div className="bg-white/70 rounded-lg p-2">
+                          <p className="text-xs text-slate-500">Unidades activas</p>
+                          <p className="text-lg font-bold text-slate-800">{billing.activeUnits}</p>
+                        </div>
+                        <div className="bg-white/70 rounded-lg p-2">
+                          <p className="text-xs text-slate-500">Precio/unidad</p>
+                          <p className="text-lg font-bold text-slate-800">${billing.pricePerUnit.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-white/70 rounded-lg p-2">
+                          <p className="text-xs text-slate-500">Total</p>
+                          <p className="text-lg font-bold text-primary-700">${billing.totalAmount.toLocaleString()}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 text-xs text-slate-500 flex justify-between">
+                        <span>Vence: {new Date(billing.dueDate).toLocaleDateString('es-MX')}</span>
+                        <span>Gracia hasta: {new Date(billing.graceDue).toLocaleDateString('es-MX')}</span>
+                      </div>
+                    </div>
+
+                    {/* Botón de pago */}
+                    {billing.currentPayment?.status !== 'PAID' && (
+                      <div>
+                        {billing.configured ? (
+                          <button
+                            onClick={handlePagarMP}
+                            disabled={mpLoading}
+                            className="w-full py-3 rounded-xl font-semibold text-white text-sm transition-all disabled:opacity-60"
+                            style={{ background: mpLoading ? '#94a3b8' : 'linear-gradient(135deg, #009ee3, #0071a5)' }}
+                          >
+                            {mpLoading ? 'Iniciando pago...' : `Pagar $${billing.totalAmount.toLocaleString()} MXN con MercadoPago`}
+                          </button>
+                        ) : (
+                          <div className="text-center py-4 text-sm text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                            {isSuperAdmin
+                              ? 'Configura el precio y las credenciales de MercadoPago para habilitar el cobro'
+                              : 'El sistema de cobro aún no está configurado. Contacta a soporte.'}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {billing.currentPayment?.status === 'PAID' && (
+                      <div className="text-center py-3 bg-green-50 border border-green-200 rounded-xl">
+                        <p className="text-sm font-medium text-green-700">✓ Pago del período actual confirmado</p>
+                        {billing.currentPayment.paidAt && (
+                          <p className="text-xs text-green-600 mt-0.5">
+                            {new Date(billing.currentPayment.paidAt).toLocaleDateString('es-MX', { dateStyle: 'long' })}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Historial */}
+                    {billing.history.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Historial</h4>
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {billing.history.map((p: any) => {
+                            const st = statusLabels[p.status] || { label: p.status, cls: 'bg-slate-100 text-slate-600' };
+                            return (
+                              <div key={p.id} className="flex items-center justify-between text-sm px-3 py-2 rounded-lg bg-white/60 border border-slate-100">
+                                <div>
+                                  <span className="font-medium text-slate-700">{p.period}</span>
+                                  <span className="text-slate-400 text-xs ml-2">{p.activeUnits} unidades</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="font-semibold text-slate-800">${parseFloat(p.totalAmount).toLocaleString()}</span>
+                                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-8 text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                    <p className="text-sm">No se pudo cargar el estado de facturación</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════
+          TAB: EMERGENCIAS
+         ══════════════════════════════════ */}
+      {tab === 'emergencias' && canManage && (
+        <div className="glass-card">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="font-semibold text-slate-700">Números de emergencia</h3>
@@ -1279,22 +1615,21 @@ export default function ConfiguracionPage() {
             ))}
             {emergencyNums.length === 0 && (
               <div className="text-center py-6 text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                <p className="text-sm">No hay números configurados. Los residentes verán esta información en la alerta de pánico.</p>
+                <p className="text-sm">No hay números configurados.</p>
               </div>
             )}
-            <button
-              onClick={addEmergencyNumber}
-              className="text-sm text-primary-600 hover:text-primary-700 font-medium"
-            >
+            <button onClick={addEmergencyNumber} className="text-sm text-primary-600 hover:text-primary-700 font-medium">
               + Agregar número
             </button>
           </div>
         </div>
       )}
 
-      {/* ── QR Servicios Externos ── */}
-      {canManage && (
-        <div className="glass-card mt-6">
+      {/* ══════════════════════════════════
+          TAB: SERVICIOS QR
+         ══════════════════════════════════ */}
+      {tab === 'servicios' && canManage && (
+        <div className="glass-card">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="font-semibold text-slate-700">QR Servicios Externos</h3>
@@ -1313,163 +1648,98 @@ export default function ConfiguracionPage() {
           {/* Habilitar */}
           <label className="flex items-center justify-between p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 mb-4">
             <span className="text-sm text-slate-700 font-medium">Habilitar servicio de acceso QR para externos</span>
-            <div
-              className={`relative w-11 h-6 rounded-full transition-colors ${svcQrCfg.enabled ? 'bg-emerald-500' : 'bg-slate-200'}`}
-              onClick={() => setSvcQrCfg(c => ({ ...c, enabled: !c.enabled }))}
-            >
-              <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${svcQrCfg.enabled ? 'translate-x-5' : ''}`} />
-            </div>
+            <Toggle value={svcQrCfg.enabled} onChange={() => setSvcQrCfg(c => ({ ...c, enabled: !c.enabled }))} />
           </label>
 
           {svcQrCfg.enabled && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Columna izquierda */}
               <div className="space-y-4">
-
                 {/* Catálogo de servicios */}
                 <div>
-                  <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Catálogo de servicios</h4>
-                  <div className="flex flex-wrap gap-2 mb-2">
+                  <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Servicios disponibles</h4>
+                  <div className="flex flex-wrap gap-2 mb-3">
                     {svcQrCfg.services.map((svc, idx) => (
-                      <span key={idx} className="flex items-center gap-1 bg-slate-100 text-slate-700 text-xs px-3 py-1.5 rounded-full">
+                      <span key={idx} className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 text-xs font-medium px-3 py-1.5 rounded-full">
                         {svc}
-                        <button onClick={() => removeService(idx)} className="text-slate-400 hover:text-red-500 ml-0.5 font-bold">✕</button>
+                        <button onClick={() => removeService(idx)} className="text-slate-400 hover:text-red-500 ml-1 font-bold">×</button>
                       </span>
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <input
-                      type="text"
-                      className="input-field flex-1 text-sm"
-                      placeholder="ej. Jardinería"
+                    <input type="text" className="input-field text-sm flex-1" placeholder="Nuevo servicio…"
                       value={newService}
-                      onChange={e => setNewService(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addService(); } }}
-                    />
-                    <button onClick={addService} className="text-sm text-primary-600 hover:text-primary-700 font-medium whitespace-nowrap">+ Agregar</button>
+                      onChange={(e) => setNewService(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addService())} />
+                    <button onClick={addService} className="btn-secondary text-sm px-4">Agregar</button>
                   </div>
                 </div>
 
-                {/* Dispositivo entrada */}
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Dispositivo de entrada</h4>
-                  <select
-                    className="input-field text-sm w-full"
-                    value={svcQrCfg.deviceId}
-                    onChange={e => setSvcQrCfg(c => ({ ...c, deviceId: e.target.value }))}
-                  >
-                    <option value="">— Sin dispositivo —</option>
-                    {devices.map(d => (
-                      <option key={d.id} value={d.id}>{d.name}{d.status === 'OFFLINE' ? ' (Offline)' : ''}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-slate-400 mt-1">Se activa automáticamente cuando el residente aprueba</p>
+                {/* Dispositivos */}
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Dispositivo de entrada</label>
+                    <select className="input-field text-sm" value={svcQrCfg.deviceId}
+                      onChange={(e) => setSvcQrCfg(c => ({ ...c, deviceId: e.target.value }))}>
+                      <option value="">— Sin dispositivo —</option>
+                      {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Dispositivo de salida</label>
+                    <select className="input-field text-sm" value={svcQrCfg.exitDeviceId}
+                      onChange={(e) => setSvcQrCfg(c => ({ ...c, exitDeviceId: e.target.value }))}>
+                      <option value="">— Sin dispositivo —</option>
+                      {devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  </div>
                 </div>
 
-                {/* Dispositivo salida + QR de salida */}
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Dispositivo de salida (QR salida)</h4>
-                  <select
-                    className="input-field text-sm w-full"
-                    value={svcQrCfg.exitDeviceId}
-                    onChange={e => setSvcQrCfg(c => ({ ...c, exitDeviceId: e.target.value }))}
-                  >
-                    <option value="">— Sin QR de salida —</option>
-                    {devices.map(d => (
-                      <option key={d.id} value={d.id}>{d.name}{d.status === 'OFFLINE' ? ' (Offline)' : ''}</option>
-                    ))}
-                  </select>
-                  {svcQrCfg.exitDeviceId && (
-                    <div className="mt-2">
-                      <label className="block text-xs text-slate-500 mb-1">
-                        Vigencia QR salida: <span className="font-bold text-slate-700">{svcQrCfg.exitQrValidHours} h</span>
-                      </label>
-                      <input type="range" min={1} max={24} step={1} value={svcQrCfg.exitQrValidHours}
-                        onChange={e => setSvcQrCfg(c => ({ ...c, exitQrValidHours: Number(e.target.value) }))}
-                        className="w-full accent-emerald-500" />
-                      <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>1 h</span><span>24 h</span></div>
-                    </div>
-                  )}
-                  <p className="text-xs text-slate-400 mt-1">Si se configura, el visitante recibe un QR de salida al ser aprobado</p>
-                </div>
-
-                {/* Tiempos */}
+                {/* TTL + Rotación */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      TTL solicitud: <span className="font-bold">{svcQrCfg.requestTtlMinutes} min</span>
-                    </label>
-                    <input type="range" min={5} max={120} step={5} value={svcQrCfg.requestTtlMinutes}
-                      onChange={e => setSvcQrCfg(c => ({ ...c, requestTtlMinutes: Number(e.target.value) }))}
-                      className="w-full accent-emerald-500" />
-                    <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>5 min</span><span>2 h</span></div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">TTL solicitud (min)</label>
+                    <input type="number" min={1} max={120} className="input-field text-sm"
+                      value={svcQrCfg.requestTtlMinutes}
+                      onChange={(e) => setSvcQrCfg(c => ({ ...c, requestTtlMinutes: parseInt(e.target.value) || 15 }))} />
                   </div>
                   <div>
-                    {svcQrCfg.rotateDays === 0 ? (
-                      <>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                          QR de entrada: <span className="font-bold text-emerald-600">Permanente</span>
-                        </label>
-                        <p className="text-xs text-slate-400">El QR nunca cambia</p>
-                      </>
-                    ) : (
-                      <>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
-                          Rotar QR: cada <span className="font-bold">{svcQrCfg.rotateDays} días</span>
-                        </label>
-                        <input type="range" min={1} max={30} value={svcQrCfg.rotateDays}
-                          onChange={e => setSvcQrCfg(c => ({ ...c, rotateDays: Number(e.target.value) }))}
-                          className="w-full accent-emerald-500" />
-                        <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>1 día</span><span>30 días</span></div>
-                      </>
-                    )}
-                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                      <div
-                        className={`relative w-9 h-5 rounded-full transition-colors ${svcQrCfg.rotateDays === 0 ? 'bg-emerald-500' : 'bg-slate-200'}`}
-                        onClick={() => setSvcQrCfg(c => ({ ...c, rotateDays: c.rotateDays === 0 ? 7 : 0 }))}
-                      >
-                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${svcQrCfg.rotateDays === 0 ? 'translate-x-4' : ''}`} />
-                      </div>
-                      <span className="text-xs text-slate-500">QR permanente</span>
-                    </label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">QR salida válido (h)</label>
+                    <input type="number" min={1} max={24} className="input-field text-sm"
+                      value={svcQrCfg.exitQrValidHours}
+                      onChange={(e) => setSvcQrCfg(c => ({ ...c, exitQrValidHours: parseInt(e.target.value) || 4 }))} />
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Rotación del QR (días) — 0 = permanente
+                  </label>
+                  <input type="number" min={0} max={365} className="input-field text-sm"
+                    value={svcQrCfg.rotateDays}
+                    onChange={(e) => setSvcQrCfg(c => ({ ...c, rotateDays: parseInt(e.target.value) || 0 }))} />
                 </div>
               </div>
 
               {/* Columna derecha */}
               <div className="space-y-4">
-
-                {/* Permisos de aprobación */}
+                {/* Permisos */}
                 <div>
-                  <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Permisos de aprobación</h4>
+                  <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide mb-2">Aprobadores</h4>
                   <div className="space-y-2">
-                    <div className="p-3 border border-slate-200 rounded-xl bg-emerald-50/50">
-                      <p className="text-sm text-slate-700 font-medium">✓ Residente</p>
-                      <p className="text-xs text-slate-400">Siempre puede aprobar su propia solicitud</p>
-                    </div>
                     <label className="flex items-center justify-between p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
                       <div>
                         <p className="text-sm text-slate-700">Guardia puede aprobar</p>
                         <p className="text-xs text-slate-400">Si desactivado, solo recibe la notificación</p>
                       </div>
-                      <div
-                        className={`relative w-11 h-6 rounded-full transition-colors ${svcQrCfg.guardCanApprove ? 'bg-emerald-500' : 'bg-slate-200'}`}
-                        onClick={() => setSvcQrCfg(c => ({ ...c, guardCanApprove: !c.guardCanApprove }))}
-                      >
-                        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${svcQrCfg.guardCanApprove ? 'translate-x-5' : ''}`} />
-                      </div>
+                      <Toggle value={svcQrCfg.guardCanApprove} onChange={() => setSvcQrCfg(c => ({ ...c, guardCanApprove: !c.guardCanApprove }))} />
                     </label>
                     <label className="flex items-center justify-between p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
                       <div>
                         <p className="text-sm text-slate-700">Admin puede aprobar</p>
                         <p className="text-xs text-slate-400">Si desactivado, solo recibe la notificación</p>
                       </div>
-                      <div
-                        className={`relative w-11 h-6 rounded-full transition-colors ${svcQrCfg.adminCanApprove ? 'bg-emerald-500' : 'bg-slate-200'}`}
-                        onClick={() => setSvcQrCfg(c => ({ ...c, adminCanApprove: !c.adminCanApprove }))}
-                      >
-                        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${svcQrCfg.adminCanApprove ? 'translate-x-5' : ''}`} />
-                      </div>
+                      <Toggle value={svcQrCfg.adminCanApprove} onChange={() => setSvcQrCfg(c => ({ ...c, adminCanApprove: !c.adminCanApprove }))} />
                     </label>
                   </div>
                 </div>
@@ -1480,12 +1750,7 @@ export default function ConfiguracionPage() {
                     <p className="text-sm text-slate-700">Mostrar teléfono del residente</p>
                     <p className="text-xs text-slate-400">El visitante verá el teléfono al seleccionar la residencia</p>
                   </div>
-                  <div
-                    className={`relative w-11 h-6 rounded-full transition-colors ${svcQrCfg.showResidentPhone ? 'bg-emerald-500' : 'bg-slate-200'}`}
-                    onClick={() => setSvcQrCfg(c => ({ ...c, showResidentPhone: !c.showResidentPhone }))}
-                  >
-                    <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${svcQrCfg.showResidentPhone ? 'translate-x-5' : ''}`} />
-                  </div>
+                  <Toggle value={svcQrCfg.showResidentPhone} onChange={() => setSvcQrCfg(c => ({ ...c, showResidentPhone: !c.showResidentPhone }))} />
                 </label>
 
                 {/* Campos obligatorios */}
@@ -1497,24 +1762,14 @@ export default function ConfiguracionPage() {
                         <p className="text-sm text-slate-700">Residencia obligatoria</p>
                         <p className="text-xs text-slate-400">El visitante debe seleccionar a qué residencia va</p>
                       </div>
-                      <div
-                        className={`relative w-11 h-6 rounded-full transition-colors ${svcQrCfg.requireUnit ? 'bg-emerald-500' : 'bg-slate-200'}`}
-                        onClick={() => setSvcQrCfg(c => ({ ...c, requireUnit: !c.requireUnit }))}
-                      >
-                        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${svcQrCfg.requireUnit ? 'translate-x-5' : ''}`} />
-                      </div>
+                      <Toggle value={svcQrCfg.requireUnit} onChange={() => setSvcQrCfg(c => ({ ...c, requireUnit: !c.requireUnit }))} />
                     </label>
                     <label className="flex items-center justify-between p-3 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50">
                       <div>
                         <p className="text-sm text-slate-700">Foto obligatoria</p>
                         <p className="text-xs text-slate-400">El visitante debe tomar foto de credencial o vehículo</p>
                       </div>
-                      <div
-                        className={`relative w-11 h-6 rounded-full transition-colors ${svcQrCfg.requirePhoto ? 'bg-emerald-500' : 'bg-slate-200'}`}
-                        onClick={() => setSvcQrCfg(c => ({ ...c, requirePhoto: !c.requirePhoto }))}
-                      >
-                        <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${svcQrCfg.requirePhoto ? 'translate-x-5' : ''}`} />
-                      </div>
+                      <Toggle value={svcQrCfg.requirePhoto} onChange={() => setSvcQrCfg(c => ({ ...c, requirePhoto: !c.requirePhoto }))} />
                     </label>
                   </div>
                 </div>
@@ -1556,9 +1811,11 @@ export default function ConfiguracionPage() {
         </div>
       )}
 
-      {/* ── Integraciones de hardware ── */}
-      {canManage && (
-        <div className="glass-card mt-6">
+      {/* ══════════════════════════════════
+          TAB: INTEGRACIONES
+         ══════════════════════════════════ */}
+      {tab === 'integraciones' && canManage && (
+        <div className="glass-card">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="font-semibold text-slate-700">Integraciones de hardware</h3>
@@ -1619,7 +1876,7 @@ export default function ConfiguracionPage() {
         </div>
       )}
 
-      {/* ── Modal poster QR Servicios Externos ── */}
+      {/* ── Modales ── */}
       {showQrPoster && svcQrUrl && (
         <QrPosterModal
           url={svcQrUrl}
@@ -1629,7 +1886,6 @@ export default function ConfiguracionPage() {
         />
       )}
 
-      {/* ── Modal de integración (componente independiente) ── */}
       <IntegrationModal
         isOpen={showIntModal}
         editingInt={editingInt}

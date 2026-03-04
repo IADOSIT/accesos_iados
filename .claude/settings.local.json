@@ -44,7 +44,12 @@
       "Bash(GIT_TRACE=1 git add:*)",
       "Bash(powershell.exe:*)",
       "Bash(sshpass:*)",
-      "Bash(ssh:*)"
+      "Bash(ssh:*)",
+      "Bash(GIT_INDEX_FILE=.git/index git commit:*)",
+      "Bash(touch:*)",
+      "Bash(GIT_TRACE=1 git commit:*)",
+      "Bash(strace git:*)",
+      "Bash(chmod u+w:*)"
     ]
   }
 }

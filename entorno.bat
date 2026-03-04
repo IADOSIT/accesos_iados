@@ -4,9 +4,19 @@ title Acceso Digital - iaDoS
 
 :MENU
 cls
+
+:: Leer entorno de compilacion (GCP o DNS)
+set "ENV_MODE=GCP"
+if exist "%~dp0vps\env-mode.txt" for /f "usebackq tokens=1 delims= " %%M in ("%~dp0vps\env-mode.txt") do set "ENV_MODE=%%M"
+if "%ENV_MODE%"=="DNS" set "APP_API_URL=https://accesodigitalapi.iados.mx/api"
+if "%ENV_MODE%"=="DNS" set "APP_PORTAL_URL=https://accesodigital.iados.mx"
+if not "%ENV_MODE%"=="DNS" set "ENV_MODE=GCP"
+if not "%ENV_MODE%"=="DNS" set "APP_API_URL=http://34.71.132.26:3001/api"
+if not "%ENV_MODE%"=="DNS" set "APP_PORTAL_URL=http://34.71.132.26:3002"
+
 echo.
 echo  ================================================
-echo   ACCESO DIGITAL - iaDoS  ::  ENTORNO
+echo   ACCESO DIGITAL - iaDoS  ::  ENTORNO  [%ENV_MODE%]
 echo  ================================================
 echo.
 echo  [ SERVICIOS ]
@@ -32,7 +42,7 @@ echo  [ ACCESO EXTERNO - GCP: 34.71.132.26 ]
 echo  13. App Movil - IP externa   (Flutter web apunta a 34.71.132.26:3001)
 echo  14. Abrir puertos - Firewall Windows (3001, 3002, 4000)
 echo  15. Levantar TODO con IP externa (3 ventanas)
-echo  16. Compilar APK Android
+echo  16. Compilar APK Android         (modo: %ENV_MODE%)
 echo.
 echo  [ VPS - PRODUCCION  74.208.149.7 ]
 echo  18. SSH al VPS
@@ -43,6 +53,7 @@ echo  22. Estado del VPS              (pm2 list + ram + disco)
 echo  23. Logs del VPS                (pm2 logs ultimas 80 lineas)
 echo  24. Compilar APK para VPS       (pide nombre, apunta a VPS)
 echo  25. Nueva version               (bump VERSION + git tag + push)
+echo  26. Cambiar entorno compilacion (actual: %ENV_MODE%)
 echo.
 echo   0. Salir
 echo.
@@ -74,6 +85,7 @@ if "%OPT%"=="22" goto VPS_STATUS
 if "%OPT%"=="23" goto VPS_LOGS
 if "%OPT%"=="24" goto BUILD_APK_VPS
 if "%OPT%"=="25" goto VERSION_BUMP
+if "%OPT%"=="26" goto SWITCH_ENV
 if "%OPT%"=="0"  goto FIN
 
 echo.
@@ -335,14 +347,15 @@ goto MENU
 cls
 echo.
 echo  ================================================
-echo   COMPILAR APK ANDROID
+echo   COMPILAR APK ANDROID  [%ENV_MODE%]
 echo  ================================================
 echo.
-echo  Compilando APK con IP externa 34.71.132.26...
+echo  API:    %APP_API_URL%
+echo  Portal: %APP_PORTAL_URL%
 echo  (Esto tarda varios minutos)
 echo.
 cd /d "%~dp0mobile"
-C:\flutter\bin\flutter.bat build apk --release --dart-define=API_URL=http://34.71.132.26:3001/api --dart-define=PORTAL_URL=http://34.71.132.26:3002
+C:\flutter\bin\flutter.bat build apk --release --dart-define=API_URL=%APP_API_URL% --dart-define=PORTAL_URL=%APP_PORTAL_URL%
 if %ERRORLEVEL% NEQ 0 (
   echo.
   echo  ERROR: La compilacion fallo.
@@ -534,14 +547,19 @@ echo   BUILD FLUTTER WEB + DEPLOY al VPS
 echo  ================================================
 echo.
 call :VPS_LOAD_CONFIG
+set "FLUTTER_API_URL=http://%VPS_IP%:3001/api"
+set "FLUTTER_PORTAL_URL=http://%VPS_IP%:3002"
+if "%ENV_MODE%"=="DNS" set "FLUTTER_API_URL=https://accesodigitalapi.iados.mx/api"
+if "%ENV_MODE%"=="DNS" set "FLUTTER_PORTAL_URL=https://accesodigital.iados.mx"
 echo  VPS IP: %VPS_IP%
+echo  API:    %FLUTTER_API_URL%
 echo.
 
 echo  [1/3] Compilando Flutter web para VPS...
 cd /d "%~dp0mobile"
 C:\flutter\bin\flutter.bat build web --release ^
-  --dart-define=API_URL=http://%VPS_IP%:3001/api ^
-  --dart-define=PORTAL_URL=http://%VPS_IP%:3002
+  --dart-define=API_URL=%FLUTTER_API_URL% ^
+  --dart-define=PORTAL_URL=%FLUTTER_PORTAL_URL%
 if %ERRORLEVEL% NEQ 0 (
   echo.
   echo  ERROR: Fallo la compilacion de Flutter.
@@ -574,6 +592,10 @@ echo   Backend + Frontend (GitHub) + Flutter web
 echo  ================================================
 echo.
 call :VPS_LOAD_CONFIG
+set "FLUTTER_API_URL=http://%VPS_IP%:3001/api"
+set "FLUTTER_PORTAL_URL=http://%VPS_IP%:3002"
+if "%ENV_MODE%"=="DNS" set "FLUTTER_API_URL=https://accesodigitalapi.iados.mx/api"
+if "%ENV_MODE%"=="DNS" set "FLUTTER_PORTAL_URL=https://accesodigital.iados.mx"
 echo  PREREQUISITO: tus cambios deben estar en GitHub
 echo  (git add + git commit + git push antes de esto)
 echo.
@@ -589,8 +611,8 @@ echo.
 echo  [2] Flutter web (build local + scp)...
 cd /d "%~dp0mobile"
 C:\flutter\bin\flutter.bat build web --release ^
-  --dart-define=API_URL=http://%VPS_IP%:3001/api ^
-  --dart-define=PORTAL_URL=http://%VPS_IP%:3002
+  --dart-define=API_URL=%FLUTTER_API_URL% ^
+  --dart-define=PORTAL_URL=%FLUTTER_PORTAL_URL%
 if %ERRORLEVEL% NEQ 0 (
   echo  ERROR: Fallo la compilacion Flutter.
   cd /d "%~dp0"
@@ -647,10 +669,14 @@ goto MENU
 cls
 echo.
 echo  ================================================
-echo   COMPILAR APK ANDROID  --^>  VPS (74.208.149.7)
+echo   COMPILAR APK ANDROID  [%ENV_MODE%]
 echo  ================================================
 echo.
 call :VPS_LOAD_CONFIG
+set "FLUTTER_API_URL=http://%VPS_IP%:3001/api"
+set "FLUTTER_PORTAL_URL=http://%VPS_IP%:3002"
+if "%ENV_MODE%"=="DNS" set "FLUTTER_API_URL=https://accesodigitalapi.iados.mx/api"
+if "%ENV_MODE%"=="DNS" set "FLUTTER_PORTAL_URL=https://accesodigital.iados.mx"
 
 :: Leer version actual
 set "CURRENT_VER="
@@ -662,13 +688,13 @@ set /p APK_NAME="  Nombre del APK (ej: AccesoDigital-v%CURRENT_VER%-cliente): "
 if "%APK_NAME%"=="" set "APK_NAME=AccesoDigital-%CURRENT_VER%"
 
 echo.
-echo  Compilando APK apuntando al VPS %VPS_IP%...
+echo  Compilando APK apuntando a: %FLUTTER_API_URL%
 echo  (Esto tarda varios minutos)
 echo.
 cd /d "%~dp0mobile"
 C:\flutter\bin\flutter.bat build apk --release ^
-  --dart-define=API_URL=http://%VPS_IP%:3001/api ^
-  --dart-define=PORTAL_URL=http://%VPS_IP%:3002
+  --dart-define=API_URL=%FLUTTER_API_URL% ^
+  --dart-define=PORTAL_URL=%FLUTTER_PORTAL_URL%
 if %ERRORLEVEL% NEQ 0 (
   echo.
   echo  ERROR: La compilacion fallo.
@@ -681,7 +707,7 @@ echo.
 echo  [OK] APK lista:
 echo   mobile\build\app\outputs\flutter-apk\%APK_NAME%.apk
 echo.
-echo  API apuntando a: http://%VPS_IP%:3001/api
+echo  API apuntando a: %FLUTTER_API_URL%
 echo.
 cd /d "%~dp0"
 pause
@@ -735,6 +761,58 @@ git push origin "v%NEW_VER%"
 echo.
 echo  [OK] Version %NEW_VER% taggeada y publicada en GitHub.
 echo  Ahora usa la opcion 19 o 21 para deployar al VPS.
+echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:SWITCH_ENV
+cls
+echo.
+echo  ================================================
+echo   CAMBIAR ENTORNO DE COMPILACION
+echo  ================================================
+echo.
+echo  Entorno actual: %ENV_MODE%
+echo.
+echo   GCP (desarrollo): http://34.71.132.26:3001/api
+echo   DNS (produccion): https://accesodigitalapi.iados.mx/api
+echo.
+echo   1. Cambiar a DNS  (para compilar y subir a GitHub)
+echo   2. Cambiar a GCP  (para desarrollo local)
+echo   0. Volver al menu
+echo.
+set "EOPT="
+set /p EOPT="  Selecciona: "
+if "%EOPT%"=="1" goto SWITCH_TO_DNS
+if "%EOPT%"=="2" goto SWITCH_TO_GCP
+goto MENU
+
+:SWITCH_TO_DNS
+echo DNS>"%~dp0vps\env-mode.txt"
+echo.
+echo  Actualizando workflow iOS...
+powershell -NoProfile -Command ^
+  "$f='%~dp0.github\workflows\build-ios.yml'; $c=[IO.File]::ReadAllText($f); $c=$c.Replace('http://34.71.132.26:3001/api','https://accesodigitalapi.iados.mx/api'); $c=$c.Replace('http://34.71.132.26:3002','https://accesodigital.iados.mx'); [IO.File]::WriteAllText($f,$c)"
+echo.
+echo  [OK] Entorno cambiado a DNS (produccion)
+echo.
+echo  Recuerda:
+echo   1. Compila APK (op.16), Flutter web (op.20/21) o APK VPS (op.24)
+echo   2. git add + commit + push a GitHub
+echo   3. Vuelve a GCP con opcion 26 cuando termines
+echo.
+pause
+goto MENU
+
+:SWITCH_TO_GCP
+echo GCP>"%~dp0vps\env-mode.txt"
+echo.
+echo  Restaurando workflow iOS a GCP...
+powershell -NoProfile -Command ^
+  "$f='%~dp0.github\workflows\build-ios.yml'; $c=[IO.File]::ReadAllText($f); $c=$c.Replace('https://accesodigitalapi.iados.mx/api','http://34.71.132.26:3001/api'); $c=$c.Replace('https://accesodigital.iados.mx','http://34.71.132.26:3002'); [IO.File]::WriteAllText($f,$c)"
+echo.
+echo  [OK] Entorno cambiado a GCP (desarrollo)
 echo.
 pause
 goto MENU
