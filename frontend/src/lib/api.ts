@@ -35,7 +35,8 @@ async function api<T = unknown>(endpoint: string, options: ApiOptions = {}): Pro
         window.location.href = '/login';
       }
     }
-    throw new Error(data.message || 'Error en la solicitud');
+    const details = (data.details as string[] | undefined)?.join(' | ');
+    throw new Error(details ? `${data.message}: ${details}` : (data.message || 'Error en la solicitud'));
   }
 
   return data as T;
@@ -44,6 +45,7 @@ async function api<T = unknown>(endpoint: string, options: ApiOptions = {}): Pro
 export const GET = <T = unknown>(url: string) => api<T>(url);
 export const POST = <T = unknown>(url: string, body: unknown) => api<T>(url, { method: 'POST', body });
 export const PUT = <T = unknown>(url: string, body: unknown) => api<T>(url, { method: 'PUT', body });
+export const PATCH = <T = unknown>(url: string, body: unknown) => api<T>(url, { method: 'PATCH', body });
 export const DELETE = <T = unknown>(url: string) => api<T>(url, { method: 'DELETE' });
 
 export default api;

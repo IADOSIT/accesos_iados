@@ -6,7 +6,7 @@ const env = require('../../config/env');
 async function login(email, password) {
   const user = await prisma.user.findUnique({
     where: { email },
-    include: { tenants: { include: { tenant: true } } },
+    include: { tenants: { orderBy: { createdAt: 'asc' }, include: { tenant: true } } },
   });
 
   if (!user || !user.isActive) {
@@ -40,6 +40,7 @@ async function login(email, password) {
   return {
     accessToken,
     refreshToken,
+    mustChangePassword: user.mustChangePassword,
     user: {
       id: user.id,
       email: user.email,
@@ -76,7 +77,7 @@ async function refreshAccessToken(refreshToken) {
   const payload = jwt.verify(refreshToken, env.JWT_SECRET);
   const user = await prisma.user.findUnique({
     where: { id: payload.id },
-    include: { tenants: { include: { tenant: true } } },
+    include: { tenants: { orderBy: { createdAt: 'asc' }, include: { tenant: true } } },
   });
 
   if (!user || !user.isActive) {
@@ -108,7 +109,47 @@ async function changePassword(userId, currentPassword, newPassword) {
     throw { status: 400, message: 'Contraseña actual incorrecta' };
   }
   const passwordHash = await bcrypt.hash(newPassword, 12);
-  await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash, mustChangePassword: false } });
 }
 
-module.exports = { login, register, refreshAccessToken, changePassword };
+async function updateFCMToken(userId, token) {
+  const value = token && token.trim() !== '' ? token : null;
+  await prisma.user.update({ where: { id: userId }, data: { fcmToken: value } });
+}
+
+async function getMe(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      tenants: {
+        where: { isActive: true },
+        include: {
+          tenant: { select: { id: true, name: true, isActive: true } },
+          unit: { select: { id: true, identifier: true, block: true, floor: true } },
+        },
+      },
+    },
+  });
+  if (!user || !user.isActive) throw { status: 404, message: 'Usuario no encontrado' };
+
+  return {
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    phone: user.phone,
+    avatarUrl: user.avatarUrl,
+    isSuperAdmin: user.isSuperAdmin,
+    tenants: user.tenants
+      .filter(t => t.tenant.isActive)
+      .map(t => ({
+        tenantId: t.tenantId,
+        tenantName: t.tenant.name,
+        role: t.role,
+        unitId: t.unitId,
+        unit: t.unit,
+      })),
+  };
+}
+
+module.exports = { login, register, refreshAccessToken, changePassword, updateFCMToken, getMe };

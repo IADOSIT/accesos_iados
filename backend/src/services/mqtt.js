@@ -3,7 +3,7 @@ const env = require('../config/env');
 
 let client = null;
 
-function connect() {
+function connect(onReady) {
   if (!env.MQTT_BROKER_URL) {
     console.log('[MQTT] No configurado - modo simulación');
     return;
@@ -19,6 +19,7 @@ function connect() {
 
   client.on('connect', () => {
     console.log('[MQTT] Conectado al broker');
+    if (onReady) onReady();
   });
 
   client.on('error', (err) => {

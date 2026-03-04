@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/auth';
+import { tenantsApi } from '@/services/api';
 import clsx from 'clsx';
 import {
   HomeIcon,
@@ -17,6 +19,7 @@ import {
   ArrowRightOnRectangleIcon,
   ShieldCheckIcon,
   BuildingOffice2Icon,
+  BellIcon,
 } from '@heroicons/react/24/outline';
 
 const adminNav = [
@@ -28,6 +31,7 @@ const adminNav = [
   { name: 'Pagos', href: '/pagos', icon: CreditCardIcon },
   { name: 'Morosos', href: '/morosos', icon: ExclamationTriangleIcon },
   { name: 'Reportes', href: '/reportes', icon: ChartBarIcon },
+  { name: 'Notificaciones', href: '/notificaciones', icon: BellIcon },
   { name: 'Configuración', href: '/configuracion', icon: Cog6ToothIcon },
 ];
 
@@ -43,43 +47,38 @@ const superAdminNav = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { user, role, tenantId, logout } = useAuthStore();
+  const { user, role, tenantId, setTenant, logout } = useAuthStore();
+  const [allTenants, setAllTenants] = useState<{ id: string; name: string }[]>([]);
 
   const navigation = role === 'GUARD' ? guardNav : adminNav;
   const isSuperAdmin = user?.isSuperAdmin;
 
+  // Cargar todos los tenants para SuperAdmin (una sola vez)
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    tenantsApi.list()
+      .then((res: any) => setAllTenants((res.data || []).map((t: any) => ({ id: t.id, name: t.name }))))
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Opciones del switcher: SuperAdmin ve todos; ADMIN ve sus tenants
+  const switcherOptions = isSuperAdmin
+    ? allTenants
+    : (user?.tenants || []).map(t => ({ id: t.tenantId, name: t.tenantName }));
+
+  const activeTenantName = isSuperAdmin
+    ? (allTenants.find(t => t.id === tenantId)?.name || user?.tenants?.find(t => t.tenantId === tenantId)?.tenantName || '—')
+    : (user?.tenants?.find(t => t.tenantId === tenantId)?.tenantName || '—');
+
   return (
     <aside className="fixed inset-y-0 left-0 w-64 glass border-r border-white/20 z-40 flex flex-col">
       {/* Logo */}
-      <div className="p-6 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          {/* Hexágono iaDoS */}
-          <div className="w-10 h-10 flex items-center justify-center flex-shrink-0">
-            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-10 h-10">
-              <polygon
-                points="24,2 44,13 44,35 24,46 4,35 4,13"
-                fill="#10B981"
-                stroke="#ffffff"
-                strokeWidth="1.5"
-              />
-              <text
-                x="24"
-                y="28"
-                textAnchor="middle"
-                fill="white"
-                fontSize="11"
-                fontWeight="bold"
-                fontFamily="system-ui, sans-serif"
-                letterSpacing="0.5"
-              >
-                iaDoS
-              </text>
-            </svg>
-          </div>
-          <div>
-            <h1 className="font-bold text-base text-slate-800 leading-tight">Acceso Digital</h1>
-            <p className="text-xs text-emerald-600 font-medium">iaDoS</p>
-          </div>
+      <div className="px-6 pt-6 pb-5 border-b border-white/10 flex flex-col items-center gap-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo3_ia2.png" alt="iaDoS" className="w-36 h-auto" />
+        <div className="text-center">
+          <h1 className="font-bold text-base text-slate-800 leading-tight">Acceso Digital</h1>
+          <p className="text-xs text-emerald-600 font-medium">iaDoS</p>
         </div>
       </div>
 
@@ -136,18 +135,31 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Tenant activo */}
-      {!isSuperAdmin && tenantId && (
+      {/* Tenant switcher */}
+      {switcherOptions.length > 1 ? (
+        <div className="mx-3 mb-3">
+          <p className="px-1 mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fraccionamiento</p>
+          <select
+            value={tenantId || ''}
+            onChange={(e) => setTenant(e.target.value)}
+            className="w-full text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer"
+          >
+            {switcherOptions.map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </div>
+      ) : tenantId ? (
         <div className="mx-3 mb-3 px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-100">
           <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-0.5">Fraccionamiento</p>
-          <p className="text-sm font-semibold text-emerald-800 truncate">
-            {user?.tenants.find(t => t.tenantId === tenantId)?.tenantName || '—'}
-          </p>
-          <p className="text-[10px] text-emerald-500 capitalize">
-            {user?.tenants.find(t => t.tenantId === tenantId)?.role?.toLowerCase()}
-          </p>
+          <p className="text-sm font-semibold text-emerald-800 truncate">{activeTenantName}</p>
+          {!isSuperAdmin && (
+            <p className="text-[10px] text-emerald-500 capitalize">
+              {user?.tenants.find(t => t.tenantId === tenantId)?.role?.toLowerCase()}
+            </p>
+          )}
         </div>
-      )}
+      ) : null}
 
       {/* Usuario */}
       <div className="p-4 border-t border-white/10">

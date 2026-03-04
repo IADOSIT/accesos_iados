@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../core/storage/secure_storage.dart';
 import '../../core/network/api_client.dart';
 
@@ -14,6 +16,7 @@ class AuthState {
   final String? lastName;
   final bool isLoading;
   final String? error;
+  final bool mustChangePassword;
 
   const AuthState({
     this.isAuthenticated = false,
@@ -26,6 +29,7 @@ class AuthState {
     this.lastName,
     this.isLoading = false,
     this.error,
+    this.mustChangePassword = false,
   });
 
   bool get isAdmin => role == 'ADMIN';
@@ -48,6 +52,7 @@ class AuthState {
     String? lastName,
     bool? isLoading,
     String? error,
+    bool? mustChangePassword,
   }) =>
       AuthState(
         isAuthenticated: isAuthenticated ?? this.isAuthenticated,
@@ -60,6 +65,7 @@ class AuthState {
         lastName: lastName ?? this.lastName,
         isLoading: isLoading ?? this.isLoading,
         error: error,
+        mustChangePassword: mustChangePassword ?? this.mustChangePassword,
       );
 }
 
@@ -68,6 +74,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final ApiClient _api;
 
   AuthNotifier(this._storage, this._api) : super(const AuthState()) {
+    _api.onUnauthorized = () {
+      state = const AuthState(); // token expirado → redirige al login via GoRouter
+    };
     _restoreSession();
   }
 
@@ -84,6 +93,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         _storage.getFirstName(),
         _storage.getLastName(),
       ]);
+      final mustChange = await _storage.getMustChangePassword();
       state = AuthState(
         isAuthenticated: true,
         tenantId: results[0],
@@ -93,7 +103,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
         tenantSlug: results[4],
         firstName: results[5],
         lastName: results[6],
+        mustChangePassword: mustChange,
       );
+      _registerFCMToken(); // refrescar token en caso de que Firebase lo rotó
     } else {
       state = const AuthState();
     }
@@ -116,12 +128,20 @@ class AuthNotifier extends StateNotifier<AuthState> {
         state = state.copyWith(isLoading: false, error: 'Sin fraccionamiento asignado');
         return false;
       }
-      final tenant = tenants.first;
+      // Respetar el tenant guardado si el usuario sigue perteneciendo a él
+      final savedTenantId = await _storage.getTenantId();
+      final tenant = (savedTenantId != null
+              ? tenants.firstWhere(
+                  (t) => t['tenantId'] == savedTenantId,
+                  orElse: () => tenants.first,
+                )
+              : tenants.first) as Map;
       final tenantId = tenant['tenantId'] as String;
       final role = tenant['role'] as String;
       final tenantName = tenant['tenantName'] as String?;
       final firstName = user['firstName'] as String?;
       final lastName = user['lastName'] as String?;
+      final mustChange = data['mustChangePassword'] == true;
 
       await _storage.saveSession(
         token: token,
@@ -133,6 +153,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         firstName: firstName,
         lastName: lastName,
       );
+      await _storage.saveMustChangePassword(mustChange);
 
       state = AuthState(
         isAuthenticated: true,
@@ -143,7 +164,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
         tenantSlug: null,
         firstName: firstName,
         lastName: lastName,
+        mustChangePassword: mustChange,
       );
+      _registerFCMToken(); // fire-and-forget, no bloquea el login
       return true;
     } catch (e) {
       state = state.copyWith(
@@ -155,8 +178,37 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
+    // Limpiar token FCM del servidor para que no lleguen notificaciones al dispositivo
+    if (!kIsWeb) {
+      try {
+        await _api.put('/auth/fcm-token', data: {'token': ''});
+        await FirebaseMessaging.instance.deleteToken();
+      } catch (_) {}
+    }
     await _storage.clear();
     state = const AuthState();
+  }
+
+  Future<void> clearForceChangePassword() async {
+    await _storage.saveMustChangePassword(false);
+    state = state.copyWith(mustChangePassword: false);
+  }
+
+  Future<void> _registerFCMToken() async {
+    if (kIsWeb) return;
+    try {
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token == null) return;
+      await _api.put('/auth/fcm-token', data: {'token': token});
+      await _storage.saveFCMToken(token);
+      // Actualizar token si Firebase lo rota
+      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+        try {
+          await _api.put('/auth/fcm-token', data: {'token': newToken});
+          await _storage.saveFCMToken(newToken);
+        } catch (_) {}
+      });
+    } catch (_) {} // silencioso — no afecta el login
   }
 }
 

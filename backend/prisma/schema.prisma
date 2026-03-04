@@ -32,6 +32,9 @@ model Tenant {
   qrCodes            QRCode[]
   auditLogs          AuditLog[]
   integrationConfigs IntegrationConfig[]
+  panicAlerts        PanicAlert[]
+  serviceQr          ServiceQR?
+  serviceRequests    ServiceRequest[]
 
   @@map("tenants")
 }
@@ -47,15 +50,18 @@ model User {
   lastName     String
   phone        String?
   avatarUrl    String?
-  isActive     Boolean  @default(true)
-  isSuperAdmin Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  fcmToken     String?
+  isActive           Boolean  @default(true)
+  isSuperAdmin       Boolean  @default(false)
+  mustChangePassword Boolean  @default(false)
+  createdAt          DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   tenants     UserTenant[]
   accessLogs  AccessLog[]
   qrCodes     QRCode[]
   auditLogs   AuditLog[]
+  panicAlerts PanicAlert[]
 
   @@map("users")
 }
@@ -105,12 +111,13 @@ model Unit {
   isActive    Boolean @default(true)
   isDelinquent Boolean @default(false)
 
-  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  residents  UserTenant[]
-  accessLogs AccessLog[]
-  payments   Payment[]
-  charges    Charge[]
-  qrCodes    QRCode[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  residents       UserTenant[]
+  accessLogs      AccessLog[]
+  payments        Payment[]
+  charges         Charge[]
+  qrCodes         QRCode[]
+  serviceRequests ServiceRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -136,15 +143,22 @@ enum DeviceStatus {
   ERROR
 }
 
+enum DeviceAccessType {
+  RESIDENT
+  VISITOR
+  GENERAL
+}
+
 model Device {
-  id          String       @id @default(uuid())
+  id          String           @id @default(uuid())
   tenantId    String
   name        String
-  type        DeviceType   @default(GATE)
-  status      DeviceStatus @default(OFFLINE)
+  type        DeviceType       @default(GATE)
+  status      DeviceStatus     @default(OFFLINE)
+  accessType  DeviceAccessType @default(GENERAL)
   mqttTopic   String?
   location    String?
-  isActive    Boolean      @default(true)
+  isActive    Boolean          @default(true)
   lastPing    DateTime?
 
   tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -293,6 +307,8 @@ model QRCode {
   usedCount   Int      @default(0)
   expiresAt   DateTime
   isActive    Boolean  @default(true)
+  category    String?
+  isQuick     Boolean  @default(false)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   unit   Unit   @relation(fields: [unitId], references: [id])
@@ -373,4 +389,94 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([tenantId, action])
   @@map("audit_logs")
+}
+
+// =============================================
+// ALERTAS DE PANICO
+// =============================================
+model PanicAlert {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  unitId    String?
+  userName  String
+  unitLabel String?
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([userId, createdAt])
+  @@map("panic_alerts")
+}
+
+// =============================================
+// QR SERVICIOS EXTERNOS
+// =============================================
+
+enum ServiceRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+model ServiceQR {
+  id        String   @id @default(uuid())
+  tenantId  String   @unique
+  code      String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requests ServiceRequest[]
+
+  @@map("service_qrs")
+}
+
+model ServiceRequest {
+  id           String               @id @default(uuid())
+  tenantId     String
+  qrId         String
+  unitId       String?
+  service      String
+  photoData    String?              @db.Text
+  visitorPhone String?
+  status       ServiceRequestStatus @default(PENDING)
+  approvedById String?
+  approvedAt   DateTime?
+  deviceId        String?
+  notes           String?
+  expiresAt       DateTime
+  exitQrCode      String?
+  exitQrExpiresAt DateTime?
+
+  tenant Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  qr     ServiceQR @relation(fields: [qrId], references: [id], onDelete: Cascade)
+  unit   Unit?     @relation(fields: [unitId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("service_requests")
+}
+
+// =============================================
+// NOTIFICACIONES
+// =============================================
+model Notification {
+  id        String    @id @default(uuid())
+  tenantId  String
+  userId    String
+  title     String
+  body      String
+  type      String    // ACCESS_DENIED | QR_USED | NEW_CHARGE | PAYMENT_CONFIRMED | DEVICE_OFFLINE | MANUAL
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId, userId, createdAt])
+  @@map("notifications")
 }

@@ -1,4 +1,4 @@
-import { GET, POST, PUT, DELETE } from '@/lib/api';
+import { GET, POST, PUT, PATCH, DELETE } from '@/lib/api';
 
 // ============ AUTH ============
 export const authApi = {
@@ -17,6 +17,7 @@ export const unitsApi = {
   deactivate: (id: string) => POST(`/units/${id}/deactivate`, {}),
   activate: (id: string) => POST(`/units/${id}/activate`, {}),
   remove: (id: string) => DELETE(`/units/${id}`),
+  bulk: (data: { rows: object[] }) => POST('/units/bulk', data),
 };
 
 // ============ USUARIOS ============
@@ -28,6 +29,7 @@ export const usersApi = {
   deactivate: (id: string) => POST(`/users/${id}/deactivate`, {}),
   activate: (id: string) => POST(`/users/${id}/activate`, {}),
   remove: (id: string) => DELETE(`/users/${id}`),
+  bulk: (data: { rows: object[] }) => POST('/users/bulk', data),
 };
 
 // ============ DISPOSITIVOS ============
@@ -45,6 +47,7 @@ export const devicesApi = {
 export const accessApi = {
   open: (data: unknown) => POST('/access/open', data),
   generateQR: (data: unknown) => POST('/access/qr', data),
+  generateQuickQR: (data: unknown) => POST('/access/qr/quick', data),
   logs: (params?: string) => GET(`/access/logs${params ? `?${params}` : ''}`),
 };
 
@@ -56,6 +59,7 @@ export const paymentsApi = {
   createPayment: (data: unknown) => POST('/payments/payments', data),
   reconcile: (paymentIds: string[]) => POST('/payments/reconcile', { paymentIds }),
   delinquent: () => GET('/payments/delinquent'),
+  bulkPayments: (data: unknown) => POST('/payments/bulk', data),
 };
 
 // ============ TENANTS (Super Admin) ============
@@ -82,6 +86,27 @@ export const configApi = {
   updateIntegration: (id: string, data: unknown) => PUT(`/config/integraciones/${id}`, data),
   deleteIntegration: (id: string) => DELETE(`/config/integraciones/${id}`),
   testIntegration: (id: string) => POST(`/config/integraciones/${id}/test`, {}),
+};
+
+// ============ NOTIFICACIONES ============
+export const notificationsApi = {
+  list: () => GET('/notifications'),
+  unreadCount: () => GET('/notifications/unread-count'),
+  readAll: () => PATCH('/notifications/read-all', {}),
+  getConfig: () => GET('/notifications/config'),
+  updateConfig: (data: unknown) => PUT('/notifications/config', data),
+  history: (params?: string) => GET(`/notifications/history${params ? `?${params}` : ''}`),
+  broadcast: (data: unknown) => POST('/notifications/broadcast', data),
+};
+
+// ============ SERVICE QR ============
+export const serviceQrApi = {
+  currentQR:      () => GET('/service-qr/current'),
+  regenerate:     () => POST('/service-qr/regenerate', {}),
+  listRequests:   (params?: string) => GET(`/service-qr/requests${params ? `?${params}` : ''}`),
+  getRequest:     (id: string) => GET(`/service-qr/requests/${id}`),
+  approve:        (id: string) => PATCH(`/service-qr/requests/${id}/approve`, {}),
+  reject:         (id: string, notes?: string) => PATCH(`/service-qr/requests/${id}/reject`, { notes }),
 };
 
 // ============ REPORTES ============

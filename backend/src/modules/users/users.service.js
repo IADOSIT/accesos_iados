@@ -13,6 +13,7 @@ async function create(tenantId, data) {
         firstName: data.firstName,
         lastName: data.lastName,
         phone: data.phone,
+        mustChangePassword: data.mustChangePassword ?? false,
       },
     });
   }
@@ -20,11 +21,22 @@ async function create(tenantId, data) {
   const existing = await prisma.userTenant.findUnique({
     where: { userId_tenantId: { userId: user.id, tenantId } },
   });
-  if (existing) throw { status: 409, message: 'Usuario ya pertenece a este tenant' };
 
-  await prisma.userTenant.create({
-    data: { userId: user.id, tenantId, role: data.role, unitId: data.unitId },
-  });
+  if (existing) {
+    // Si existe pero está inactivo, reactivarlo con el nuevo rol
+    if (!existing.isActive) {
+      await prisma.userTenant.update({
+        where: { userId_tenantId: { userId: user.id, tenantId } },
+        data: { isActive: true, role: data.role, unitId: data.unitId ?? existing.unitId },
+      });
+    } else {
+      throw { status: 409, message: 'Usuario ya pertenece a este fraccionamiento' };
+    }
+  } else {
+    await prisma.userTenant.create({
+      data: { userId: user.id, tenantId, role: data.role, unitId: data.unitId },
+    });
+  }
 
   return { ...user, role: data.role, passwordHash: undefined };
 }
@@ -58,6 +70,15 @@ async function update(tenantId, userId, data) {
   if (data.firstName) updateUser.firstName = data.firstName;
   if (data.lastName) updateUser.lastName = data.lastName;
   if (data.phone !== undefined) updateUser.phone = data.phone;
+  if (data.email) {
+    const conflict = await prisma.user.findFirst({ where: { email: data.email, id: { not: userId } } });
+    if (conflict) throw { status: 409, message: 'El email ya está en uso por otro usuario' };
+    updateUser.email = data.email;
+  }
+  if (data.password) {
+    updateUser.passwordHash = await bcrypt.hash(data.password, 12);
+    updateUser.mustChangePassword = false;
+  }
 
   if (Object.keys(updateUser).length > 0) {
     await prisma.user.update({ where: { id: userId }, data: updateUser });
@@ -100,4 +121,29 @@ async function hardDelete(tenantId, userId) {
   }
 }
 
-module.exports = { create, findAll, findById, update, deactivate, activate, hardDelete };
+async function bulkCreate(tenantId, rows) {
+  const units = await prisma.unit.findMany({
+    where: { tenantId },
+    select: { id: true, identifier: true },
+  });
+  const unitMap = Object.fromEntries(units.map(u => [u.identifier.toLowerCase(), u.id]));
+
+  const results = { created: 0, skipped: 0, errors: [] };
+  for (const [i, row] of rows.entries()) {
+    try {
+      const data = { ...row, mustChangePassword: true };
+      if (row.unit) {
+        data.unitId = unitMap[row.unit.toLowerCase()] ?? undefined;
+        delete data.unit;
+      }
+      await create(tenantId, data);
+      results.created++;
+    } catch (err) {
+      if (err.status === 409) results.skipped++;
+      else results.errors.push({ row: i + 2, email: row.email, reason: err.message });
+    }
+  }
+  return results;
+}
+
+module.exports = { create, bulkCreate, findAll, findById, update, deactivate, activate, hardDelete };

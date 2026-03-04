@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_colors_scheme.dart';
 
 class StatCard extends StatelessWidget {
   final String label;
@@ -21,18 +21,22 @@ class StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = accentColor ?? AppColors.primary;
+    final c = context.colors;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final color = accentColor ?? c.primary;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: AppColors.cardGradient,
+        gradient: c.cardGradient,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: c.border),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.05),
-            blurRadius: 12,
+            color: isLight
+                ? Colors.black.withOpacity(0.07)
+                : color.withOpacity(0.05),
+            blurRadius: 14,
             offset: const Offset(0, 4),
           ),
         ],
@@ -55,13 +59,13 @@ class StatCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: AppColors.success.withOpacity(0.12),
+                    color: c.success.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     trend!,
-                    style: const TextStyle(
-                      color: AppColors.success,
+                    style: TextStyle(
+                      color: c.success,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
@@ -75,26 +79,26 @@ class StatCard extends StatelessWidget {
               height: 28,
               width: 80,
               decoration: BoxDecoration(
-                color: AppColors.bgInput,
+                color: c.bgInput,
                 borderRadius: BorderRadius.circular(6),
               ),
             )
           else
             Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
+                color: c.textPrimary,
                 letterSpacing: -0.5,
               ),
             ),
           const SizedBox(height: 4),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: AppColors.textMuted,
+              color: c.textMuted,
               fontWeight: FontWeight.w500,
             ),
           ),

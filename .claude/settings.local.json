@@ -29,7 +29,22 @@
       "Bash(find:*)",
       "Bash(cat:*)",
       "Bash(C:/flutter/bin/flutter.bat pub:*)",
-      "Bash(C:/flutter/bin/flutter.bat build:*)"
+      "Bash(C:/flutter/bin/flutter.bat build:*)",
+      "Bash(\"C:/flutter/bin/flutter.bat\" clean:*)",
+      "Bash(\"C:/flutter/bin/flutter.bat\" build:*)",
+      "Bash(C:flutterbinflutter.bat build:*)",
+      "Bash(\"/c/flutter/bin/flutter\" build:*)",
+      "Bash(taskkill:*)",
+      "Bash(npx tsc:*)",
+      "Bash(/c/flutter/bin/flutter analyze:*)",
+      "Bash(grep:*)",
+      "Bash(identify:*)",
+      "Bash(do echo:*)",
+      "Bash(powershell:*)",
+      "Bash(GIT_TRACE=1 git add:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(sshpass:*)",
+      "Bash(ssh:*)"
     ]
   }
 }

@@ -11,6 +11,7 @@ const env = {
   MQTT_USERNAME: process.env.MQTT_USERNAME,
   MQTT_PASSWORD: process.env.MQTT_PASSWORD,
   ACCESS_COOLDOWN_SECONDS: parseInt(process.env.ACCESS_COOLDOWN_SECONDS || '30', 10),
+  FIREBASE_SERVICE_ACCOUNT_JSON: process.env.FIREBASE_SERVICE_ACCOUNT_JSON || null,
 };
 
 module.exports = env;

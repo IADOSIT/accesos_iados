@@ -117,7 +117,7 @@ async function unitUsage(tenantId, from, to) {
   }));
 }
 
-async function dashboard(tenantId) {
+async function dashboard(tenantId, userId, unitId) {
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -129,6 +129,7 @@ async function dashboard(tenantId) {
     todayAccesses,
     monthPayments,
     onlineDevices,
+    paidUnitIds,
   ] = await Promise.all([
     prisma.unit.count({ where: { tenantId, isActive: true } }),
     prisma.userTenant.count({ where: { tenantId, isActive: true } }),
@@ -140,9 +141,16 @@ async function dashboard(tenantId) {
       _count: true,
     }),
     prisma.device.count({ where: { tenantId, status: 'ONLINE', isActive: true } }),
+    prisma.payment.findMany({
+      where: { tenantId, createdAt: { gte: startOfMonth } },
+      distinct: ['unitId'],
+      select: { unitId: true },
+    }),
   ]);
 
-  return {
+  const monthPaidUnits = paidUnitIds.length;
+
+  const result = {
     totalUnits,
     activeUsers,
     delinquentUnits,
@@ -152,7 +160,35 @@ async function dashboard(tenantId) {
       total: monthPayments._sum.amount || 0,
     },
     onlineDevices,
+    monthPaidUnits,
   };
+
+  // Datos específicos del residente
+  if (userId && unitId) {
+    const [unit, pendingCharges, lastAccess] = await Promise.all([
+      prisma.unit.findUnique({ where: { id: unitId }, select: { isDelinquent: true } }),
+      prisma.charge.findMany({
+        where: { unitId, status: { in: ['PENDING', 'PARTIAL'] } },
+        select: { amount: true, dueDate: true },
+        orderBy: { dueDate: 'asc' },
+      }),
+      prisma.accessLog.findFirst({
+        where: { tenantId, unitId },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      }),
+    ]);
+    const pendingAmount = pendingCharges.reduce((sum, c) => sum + Number(c.amount), 0);
+    result.resident = {
+      isDelinquent: unit?.isDelinquent ?? false,
+      pendingCharges: pendingCharges.length,
+      pendingAmount,
+      nextDueDate: pendingCharges[0]?.dueDate?.toISOString() ?? null,
+      lastAccess: lastAccess?.createdAt.toISOString() ?? null,
+    };
+  }
+
+  return result;
 }
 
 module.exports = { accessByRange, paymentsByPeriod, delinquencyReport, guardActivity, unitUsage, dashboard };

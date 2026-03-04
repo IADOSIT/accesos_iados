@@ -21,16 +21,28 @@ echo   6. Test conexion MQTT       (broker IoT)
 echo   7. Test puertos del sistema (3001, 3002, 4000, 1883, 5432)
 echo   8. Estado procesos Node.js
 echo   9. Matar puerto ocupado
+echo  17. Mosquitto Broker         (estado / iniciar / reiniciar)
 echo.
 echo  [ MANTENIMIENTO ]
 echo  10. Instalar dependencias    (npm install ambos)
 echo  11. Prisma DB push           (sync schema a BD)
 echo  12. Prisma generate          (regenerar cliente)
 echo.
-echo  [ ACCESO EXTERNO - IP: 34.71.132.26 ]
+echo  [ ACCESO EXTERNO - GCP: 34.71.132.26 ]
 echo  13. App Movil - IP externa   (Flutter web apunta a 34.71.132.26:3001)
 echo  14. Abrir puertos - Firewall Windows (3001, 3002, 4000)
 echo  15. Levantar TODO con IP externa (3 ventanas)
+echo  16. Compilar APK Android
+echo.
+echo  [ VPS - PRODUCCION  74.208.149.7 ]
+echo  18. SSH al VPS
+echo  19. Deploy Backend + Frontend   (git pull + npm + pm2 restart)
+echo  20. Build Flutter web + Deploy  (build local + scp + pm2 restart)
+echo  21. Deploy TODO                 (19 + 20 completo)
+echo  22. Estado del VPS              (pm2 list + ram + disco)
+echo  23. Logs del VPS                (pm2 logs ultimas 80 lineas)
+echo  24. Compilar APK para VPS       (pide nombre, apunta a VPS)
+echo  25. Nueva version               (bump VERSION + git tag + push)
 echo.
 echo   0. Salir
 echo.
@@ -52,6 +64,16 @@ if "%OPT%"=="12" goto PRISMA_GEN
 if "%OPT%"=="13" goto MOVIL_EXT
 if "%OPT%"=="14" goto ABRIR_PUERTOS
 if "%OPT%"=="15" goto TODOS_EXT
+if "%OPT%"=="16" goto BUILD_APK
+if "%OPT%"=="17" goto MOSQUITTO
+if "%OPT%"=="18" goto VPS_SSH
+if "%OPT%"=="19" goto VPS_DEPLOY_WEB
+if "%OPT%"=="20" goto VPS_DEPLOY_FLUTTER
+if "%OPT%"=="21" goto VPS_DEPLOY_ALL
+if "%OPT%"=="22" goto VPS_STATUS
+if "%OPT%"=="23" goto VPS_LOGS
+if "%OPT%"=="24" goto BUILD_APK_VPS
+if "%OPT%"=="25" goto VERSION_BUMP
 if "%OPT%"=="0"  goto FIN
 
 echo.
@@ -106,21 +128,15 @@ goto MENU
 :TODOS
 cls
 echo.
-echo  Iniciando Backend en ventana separada...
+echo  Iniciando servicios en ventanas separadas...
 start "iaDoS Backend :3001" cmd /k "cd /d %~dp0backend && node src/index.js"
-timeout /t 3 /nobreak >nul
-echo  Iniciando Frontend en ventana separada...
 start "iaDoS Frontend :3002" cmd /k "cd /d %~dp0frontend && npm run dev"
-timeout /t 3 /nobreak >nul
-echo  Iniciando App Movil en ventana separada...
 start "iaDoS App Movil :4000" cmd /k "cd /d %~dp0mobile && C:\flutter\bin\flutter.bat run -d web-server --web-port 4000 --web-hostname 0.0.0.0"
 echo.
-echo  Todos los servicios iniciados:
 echo   Backend   -^> http://localhost:3001/api/health
 echo   Frontend  -^> http://localhost:3002
 echo   App Movil -^> http://localhost:4000
 echo.
-pause
 goto MENU
 
 ::-----------------------------------------------------------------
@@ -147,11 +163,14 @@ cls
 echo.
 echo  Probando conexion MQTT...
 echo.
-for /f "tokens=2 delims==" %%A in ('findstr /i "MQTT_BROKER_URL" "%~dp0backend\.env" 2^>nul') do set "MQTT_URL=%%A"
-echo  Configurado en .env: %MQTT_URL%
+echo  Broker local: localhost:1883
 echo.
 powershell -NoProfile -Command ^
-  "try { $c = New-Object System.Net.Sockets.TcpClient; $r = $c.BeginConnect('broker-url',1883,$null,$null); $ok = $r.AsyncWaitHandle.WaitOne(4000); if($ok -and $c.Connected){ Write-Host '  [OK] Puerto 1883 alcanzable' -ForegroundColor Green }else{ Write-Host '  [WARN] Puerto 1883 no alcanzable - backend usara modo simulacion' -ForegroundColor Yellow }; $c.Close() } catch { Write-Host '  [WARN] No se pudo probar (configura MQTT_BROKER_URL en .env)' -ForegroundColor Yellow }"
+  "try { $c = New-Object System.Net.Sockets.TcpClient; $r = $c.BeginConnect('localhost',1883,$null,$null); $ok = $r.AsyncWaitHandle.WaitOne(4000); if($ok -and $c.Connected){ Write-Host '  [OK] Broker MQTT respondiendo en localhost:1883' -ForegroundColor Green }else{ Write-Host '  [FAIL] Broker no responde - verificar servicio Mosquitto' -ForegroundColor Red }; $c.Close() } catch { Write-Host '  [ERROR] No se pudo conectar a localhost:1883' -ForegroundColor Red }"
+echo.
+echo  Estado del servicio Mosquitto:
+powershell -NoProfile -Command ^
+  "$s=Get-Service mosquitto -ErrorAction SilentlyContinue;if($s){if($s.Status -eq 'Running'){Write-Host ('  [CORRIENDO] '+$s.Status) -ForegroundColor Green}else{Write-Host ('  [DETENIDO] '+$s.Status) -ForegroundColor Red}}else{Write-Host '  [NO INSTALADO]' -ForegroundColor Red}"
 echo.
 pause
 goto MENU
@@ -290,7 +309,7 @@ echo   App URL:  http://34.71.132.26:4000
 echo  (Presiona CTRL+C para detener)
 echo.
 cd /d "%~dp0mobile"
-C:\flutter\bin\flutter.bat run -d web-server --web-port 4000 --web-hostname 0.0.0.0 --dart-define=API_URL=http://34.71.132.26:3001/api
+C:\flutter\bin\flutter.bat run -d web-server --web-port 4000 --web-hostname 0.0.0.0 --dart-define=API_URL=http://34.71.132.26:3001/api --dart-define=PORTAL_URL=http://34.71.132.26:3002
 cd /d "%~dp0"
 echo.
 pause
@@ -300,19 +319,44 @@ goto MENU
 :TODOS_EXT
 cls
 echo.
-echo  Iniciando TODOS los servicios con IP externa...
-echo.
+echo  Iniciando servicios con IP externa en ventanas separadas...
 start "iaDoS Backend :3001" cmd /k "cd /d %~dp0backend && node src/index.js"
-timeout /t 3 /nobreak >nul
 start "iaDoS Frontend :3002 [EXT]" cmd /k "set NEXT_PUBLIC_API_URL=http://34.71.132.26:3001/api&& cd /d %~dp0frontend && npm run dev"
-timeout /t 3 /nobreak >nul
-start "iaDoS App Movil :4000 [EXT]" cmd /k "cd /d %~dp0mobile && C:\flutter\bin\flutter.bat run -d web-server --web-port 4000 --web-hostname 0.0.0.0 --dart-define=API_URL=http://34.71.132.26:3001/api"
+start "iaDoS App Movil :4000 [EXT]" cmd /k "cd /d %~dp0mobile && C:\flutter\bin\flutter.bat run -d web-server --web-port 4000 --web-hostname 0.0.0.0 --dart-define=API_URL=http://34.71.132.26:3001/api --dart-define=PORTAL_URL=http://34.71.132.26:3002"
 echo.
-echo  Servicios iniciados (acceso externo):
 echo   Backend   -^> http://34.71.132.26:3001/api/health
 echo   Frontend  -^> http://34.71.132.26:3002
 echo   App Movil -^> http://34.71.132.26:4000
 echo.
+goto MENU
+
+::-----------------------------------------------------------------
+:BUILD_APK
+cls
+echo.
+echo  ================================================
+echo   COMPILAR APK ANDROID
+echo  ================================================
+echo.
+echo  Compilando APK con IP externa 34.71.132.26...
+echo  (Esto tarda varios minutos)
+echo.
+cd /d "%~dp0mobile"
+C:\flutter\bin\flutter.bat build apk --release --dart-define=API_URL=http://34.71.132.26:3001/api --dart-define=PORTAL_URL=http://34.71.132.26:3002
+if %ERRORLEVEL% NEQ 0 (
+  echo.
+  echo  ERROR: La compilacion fallo.
+  echo.
+  cd /d "%~dp0"
+  pause
+  goto MENU
+)
+copy /Y "build\app\outputs\flutter-apk\app-release.apk" "build\app\outputs\flutter-apk\Acceso-Digital-iaDos.apk" >nul
+echo.
+echo  APK lista:
+echo  mobile\build\app\outputs\flutter-apk\Acceso-Digital-iaDos.apk
+echo.
+cd /d "%~dp0"
 pause
 goto MENU
 
@@ -330,35 +374,367 @@ netsh advfirewall firewall add rule name="iados-3001" dir=in action=allow protoc
 netsh advfirewall firewall add rule name="iados-3002" dir=in action=allow protocol=TCP localport=3002
 netsh advfirewall firewall add rule name="iados-4000" dir=in action=allow protocol=TCP localport=4000
 echo.
-echo  [OK] Puertos abiertos en Windows Firewall: 3001, 3002, 4000
+echo  [OK] Puertos 3001, 3002, 4000 abiertos en Firewall de Windows.
 echo.
 echo  -------------------------------------------------------
-echo  Ahora abre estas reglas en GCP (Firewall de la VM):
+echo  Firewall del VPS IONOS (74.208.149.7):
 echo  -------------------------------------------------------
 echo.
-echo  Ve a: GCP Console ^> VPC Network ^> Firewall
-echo  Crea 3 reglas Ingress con estos datos:
+echo  El VPS ya tiene ufw configurado con puertos abiertos.
+echo  Si necesitas verificar, usa opcion 18 (SSH al VPS) y ejecuta:
+echo    ufw status
 echo.
-echo  Nombre:          iados-backend
-echo  Direccion:       Ingress
-echo  Accion:          Allow
-echo  Targets:         All instances in network
-echo  Source IP:       0.0.0.0/0
-echo  Protocolos:      TCP
-echo  Puertos:         3001
-echo.
-echo  Nombre:          iados-frontend
-echo  Puertos:         3002
-echo.
-echo  Nombre:          iados-movil
-echo  Puertos:         4000
-echo.
+echo  URLs de acceso:
+echo   Backend API  -^> http://74.208.149.7:3001/api/health
+echo   Frontend     -^> http://74.208.149.7:3002
+echo   App Movil    -^> http://74.208.149.7:4000
 echo  -------------------------------------------------------
-echo  URLs de acceso desde fuera:
-echo   Backend API  -^> http://34.71.132.26:3001/api/health
-echo   Frontend     -^> http://34.71.132.26:3002
-echo   App Movil    -^> http://34.71.132.26:4000
-echo  -------------------------------------------------------
+echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:MOSQUITTO
+cls
+echo.
+echo  ================================================
+echo   MOSQUITTO MQTT BROKER
+echo  ================================================
+echo.
+echo  Estado actual:
+powershell -NoProfile -Command ^
+  "$s=Get-Service mosquitto -ErrorAction SilentlyContinue;if($s){if($s.Status -eq 'Running'){Write-Host ('  [CORRIENDO] Mosquitto activo en puerto 1883') -ForegroundColor Green}else{Write-Host ('  [DETENIDO] Mosquitto no esta corriendo') -ForegroundColor Red}}else{Write-Host '  [NO INSTALADO] Mosquitto no encontrado' -ForegroundColor Red}"
+echo.
+echo  Clientes conectados (puerto 1883):
+powershell -NoProfile -Command ^
+  "$conns=Get-NetTCPConnection -LocalPort 1883 -State Established -ErrorAction SilentlyContinue;if($conns){Write-Host ('  ['+$conns.Count+' cliente(s) conectado(s)]') -ForegroundColor Cyan;$conns|ForEach-Object{Write-Host ('  - '+$_.RemoteAddress+':'+$_.RemotePort)}}else{Write-Host '  Sin clientes conectados' -ForegroundColor Yellow}"
+echo.
+echo  ------------------------------------------------
+echo   Acciones:
+echo    1. Iniciar Mosquitto
+echo    2. Detener Mosquitto
+echo    3. Reiniciar Mosquitto
+echo    0. Volver al menu
+echo  ------------------------------------------------
+echo.
+set "MOPT="
+set /p MOPT="  Selecciona: "
+
+if "%MOPT%"=="1" (
+  net start mosquitto
+  echo.
+  pause
+  goto MOSQUITTO
+)
+if "%MOPT%"=="2" (
+  net stop mosquitto
+  echo.
+  pause
+  goto MOSQUITTO
+)
+if "%MOPT%"=="3" (
+  net stop mosquitto >nul 2>&1
+  timeout /t 2 /nobreak >nul
+  net start mosquitto
+  echo.
+  pause
+  goto MOSQUITTO
+)
+goto MENU
+
+::-----------------------------------------------------------------
+::  VPS - PRODUCCION
+::-----------------------------------------------------------------
+
+:VPS_LOAD_CONFIG
+:: Verificar que ssh este instalado
+where ssh >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+  echo.
+  echo  [ERROR] El cliente SSH no esta instalado o no esta en PATH.
+  echo.
+  echo  Para instalarlo, abre PowerShell como Administrador y ejecuta:
+  echo    dism /online /Add-Capability /CapabilityName:OpenSSH.Client~~~~0.0.1.0
+  echo.
+  pause
+  goto MENU
+)
+:: Carga la config del VPS (IP, usuario, clave)
+if exist "%~dp0vps\vps.config.bat" (
+  call "%~dp0vps\vps.config.bat"
+) else (
+  echo.
+  echo  [ERROR] No se encontro vps\vps.config.bat
+  echo.
+  pause
+  goto MENU
+)
+if "%VPS_IP%"=="X.X.X.X" (
+  echo.
+  echo  [ERROR] Edita vps\vps.config.bat con la IP real de tu VPS.
+  echo.
+  pause
+  goto MENU
+)
+:: Armar argumentos SSH
+set "SSH_KEY_ARG="
+if not "%VPS_KEY%"=="" set "SSH_KEY_ARG=-i %VPS_KEY%"
+set "SSH_OPTS=-o StrictHostKeyChecking=no -o ConnectTimeout=15"
+goto :eof
+
+::-----------------------------------------------------------------
+:VPS_SSH
+cls
+call :VPS_LOAD_CONFIG
+echo.
+echo  Conectando al VPS %VPS_USER%@%VPS_IP%...
+echo  (Escribe 'exit' para volver)
+echo.
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP%
+echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:VPS_DEPLOY_WEB
+cls
+echo.
+echo  ================================================
+echo   DEPLOY BACKEND + FRONTEND al VPS  (via GitHub)
+echo  ================================================
+echo.
+call :VPS_LOAD_CONFIG
+echo  VPS: %VPS_USER%@%VPS_IP%
+echo.
+echo  PREREQUISITO: tus cambios deben estar en GitHub
+echo  (git add + git commit + git push antes de esto)
+echo.
+set "CONFIRM="
+set /p CONFIRM="  Confirmar deploy? (s/n): "
+if /i not "%CONFIRM%"=="s" goto MENU
+
+echo.
+echo  Ejecutando en VPS: git pull + npm install + build + pm2 restart...
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-server.sh"
+
+echo.
+echo  [OK] Deploy completado.
+echo   Backend   -^> http://%VPS_IP%:3001/api/health
+echo   Frontend  -^> http://%VPS_IP%:3002
+echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:VPS_DEPLOY_FLUTTER
+cls
+echo.
+echo  ================================================
+echo   BUILD FLUTTER WEB + DEPLOY al VPS
+echo  ================================================
+echo.
+call :VPS_LOAD_CONFIG
+echo  VPS IP: %VPS_IP%
+echo.
+
+echo  [1/3] Compilando Flutter web para VPS...
+cd /d "%~dp0mobile"
+C:\flutter\bin\flutter.bat build web --release ^
+  --dart-define=API_URL=http://%VPS_IP%:3001/api ^
+  --dart-define=PORTAL_URL=http://%VPS_IP%:3002
+if %ERRORLEVEL% NEQ 0 (
+  echo.
+  echo  ERROR: Fallo la compilacion de Flutter.
+  cd /d "%~dp0"
+  pause
+  goto MENU
+)
+
+echo  [2/3] Subiendo build/web al VPS...
+scp %SSH_KEY_ARG% %SSH_OPTS% -r "build\web\." %VPS_USER%@%VPS_IP%:%VPS_DIR%/flutter-web/
+
+echo  [3/3] Reiniciando iados-flutter en PM2...
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-flutter.sh"
+
+cd /d "%~dp0"
+echo.
+echo  [OK] Flutter web desplegado.
+echo   App Movil -^> http://%VPS_IP%:4000
+echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:VPS_DEPLOY_ALL
+cls
+echo.
+echo  ================================================
+echo   DEPLOY COMPLETO al VPS
+echo   Backend + Frontend (GitHub) + Flutter web
+echo  ================================================
+echo.
+call :VPS_LOAD_CONFIG
+echo  PREREQUISITO: tus cambios deben estar en GitHub
+echo  (git add + git commit + git push antes de esto)
+echo.
+set "CONFIRM="
+set /p CONFIRM="  Confirmar deploy completo? (s/n): "
+if /i not "%CONFIRM%"=="s" goto MENU
+
+echo.
+echo  [1] Backend + Frontend (git pull en VPS)...
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-server.sh"
+
+echo.
+echo  [2] Flutter web (build local + scp)...
+cd /d "%~dp0mobile"
+C:\flutter\bin\flutter.bat build web --release ^
+  --dart-define=API_URL=http://%VPS_IP%:3001/api ^
+  --dart-define=PORTAL_URL=http://%VPS_IP%:3002
+if %ERRORLEVEL% NEQ 0 (
+  echo  ERROR: Fallo la compilacion Flutter.
+  cd /d "%~dp0"
+  pause
+  goto MENU
+)
+scp %SSH_KEY_ARG% %SSH_OPTS% -r "build\web\." %VPS_USER%@%VPS_IP%:%VPS_DIR%/flutter-web/
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "bash %VPS_DIR%/vps/deploy-flutter.sh"
+cd /d "%~dp0"
+
+echo.
+echo  [OK] Deploy completo terminado.
+echo   Backend   -^> http://%VPS_IP%:3001/api/health
+echo   Frontend  -^> http://%VPS_IP%:3002
+echo   App Movil -^> http://%VPS_IP%:4000
+echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:VPS_STATUS
+cls
+echo.
+echo  ================================================
+echo   ESTADO DEL VPS
+echo  ================================================
+echo.
+call :VPS_LOAD_CONFIG
+echo  Conectando a %VPS_USER%@%VPS_IP%...
+echo.
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "pm2 list && echo && echo '--- Memoria ---' && free -h && echo && echo '--- Disco ---' && df -h / && echo && echo '--- Mosquitto ---' && systemctl is-active mosquitto 2>/dev/null || echo INACTIVO"
+echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:VPS_LOGS
+cls
+echo.
+echo  ================================================
+echo   LOGS DEL VPS (ultimas 80 lineas)
+echo  ================================================
+echo.
+call :VPS_LOAD_CONFIG
+echo  Mostrando logs... (CTRL+C para salir)
+echo.
+ssh %SSH_KEY_ARG% %SSH_OPTS% %VPS_USER%@%VPS_IP% "pm2 logs --lines 80 --nostream"
+echo.
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:BUILD_APK_VPS
+cls
+echo.
+echo  ================================================
+echo   COMPILAR APK ANDROID  --^>  VPS (74.208.149.7)
+echo  ================================================
+echo.
+call :VPS_LOAD_CONFIG
+
+:: Leer version actual
+set "CURRENT_VER="
+set /p CURRENT_VER=<"%~dp0VERSION"
+echo  Version actual: %CURRENT_VER%
+echo.
+set "APK_NAME="
+set /p APK_NAME="  Nombre del APK (ej: AccesoDigital-v%CURRENT_VER%-cliente): "
+if "%APK_NAME%"=="" set "APK_NAME=AccesoDigital-%CURRENT_VER%"
+
+echo.
+echo  Compilando APK apuntando al VPS %VPS_IP%...
+echo  (Esto tarda varios minutos)
+echo.
+cd /d "%~dp0mobile"
+C:\flutter\bin\flutter.bat build apk --release ^
+  --dart-define=API_URL=http://%VPS_IP%:3001/api ^
+  --dart-define=PORTAL_URL=http://%VPS_IP%:3002
+if %ERRORLEVEL% NEQ 0 (
+  echo.
+  echo  ERROR: La compilacion fallo.
+  cd /d "%~dp0"
+  pause
+  goto MENU
+)
+copy /Y "build\app\outputs\flutter-apk\app-release.apk" "build\app\outputs\flutter-apk\%APK_NAME%.apk" >nul
+echo.
+echo  [OK] APK lista:
+echo   mobile\build\app\outputs\flutter-apk\%APK_NAME%.apk
+echo.
+echo  API apuntando a: http://%VPS_IP%:3001/api
+echo.
+cd /d "%~dp0"
+pause
+goto MENU
+
+::-----------------------------------------------------------------
+:VERSION_BUMP
+cls
+echo.
+echo  ================================================
+echo   NUEVA VERSION
+echo  ================================================
+echo.
+set "CURRENT_VER="
+set /p CURRENT_VER=<"%~dp0VERSION"
+echo  Version actual: %CURRENT_VER%
+echo.
+echo  Escribe la nueva version (ej: 1.1.0) o Enter para cancelar:
+set "NEW_VER="
+set /p NEW_VER="  Nueva version: "
+if "%NEW_VER%"=="" (
+  echo  Cancelado.
+  pause
+  goto MENU
+)
+
+:: Actualizar VERSION file
+echo %NEW_VER%> "%~dp0VERSION"
+echo.
+echo  [1/4] VERSION actualizado a %NEW_VER%
+
+:: Verificar estado de git
+echo  [2/4] Estado git...
+cd /d "%~dp0"
+git add VERSION
+git status --short
+
+echo.
+set "COMMIT_MSG="
+set /p COMMIT_MSG="  Mensaje del commit (Enter = 'version %NEW_VER%'): "
+if "%COMMIT_MSG%"=="" set "COMMIT_MSG=version %NEW_VER%"
+
+git commit -m "%COMMIT_MSG%"
+echo  [3/4] Commit creado.
+
+echo  [4/4] Creando tag v%NEW_VER% y pusheando a GitHub...
+git tag -a "v%NEW_VER%" -m "Version %NEW_VER%"
+git push
+git push origin "v%NEW_VER%"
+
+echo.
+echo  [OK] Version %NEW_VER% taggeada y publicada en GitHub.
+echo  Ahora usa la opcion 19 o 21 para deployar al VPS.
 echo.
 pause
 goto MENU

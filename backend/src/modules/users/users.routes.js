@@ -9,6 +9,7 @@ const router = Router();
 
 router.use(authenticate, validateTenant);
 
+router.post('/bulk', authorize('ADMIN'), ctrl.bulkCreate);
 router.post('/', authorize('ADMIN'), validate(createUserSchema), ctrl.create);
 router.get('/', authorize('ADMIN', 'GUARD'), ctrl.findAll);
 router.get('/:id', authorize('ADMIN', 'GUARD'), ctrl.findById);

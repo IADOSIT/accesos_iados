@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth';
-import { ShieldCheckIcon } from '@heroicons/react/24/solid';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -32,9 +31,8 @@ export default function LoginPage() {
       <div className="glass-card w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <ShieldCheckIcon className="w-9 h-9 text-white" />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo3_ia2.png" alt="iaDoS" className="w-44 h-auto mx-auto mb-4 drop-shadow-md" />
           <h1 className="text-2xl font-bold text-slate-800">Acceso Digital</h1>
           <p className="text-slate-500 mt-1">iaDoS - Control de Accesos</p>
         </div>

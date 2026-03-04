@@ -62,4 +62,16 @@ async function hardDelete(req, res) {
   }
 }
 
-module.exports = { create, findAll, findById, update, deactivate, activate, hardDelete };
+async function bulkCreate(req, res) {
+  try {
+    if (!Array.isArray(req.body.rows) || req.body.rows.length === 0) {
+      return error(res, 'El campo rows es requerido y debe ser un arreglo', 400);
+    }
+    const result = await svc.bulkCreate(req.tenantId, req.body.rows);
+    return success(res, result, `Importación completa: ${result.created} creados`);
+  } catch (err) {
+    return error(res, err.message, err.status || 500);
+  }
+}
+
+module.exports = { create, bulkCreate, findAll, findById, update, deactivate, activate, hardDelete };

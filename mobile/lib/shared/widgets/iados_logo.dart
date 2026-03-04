@@ -2,6 +2,16 @@ import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/constants/app_colors_scheme.dart';
+
+// ─── Helper: logo3_ia2.png ────────────────────────────────────────────────────
+// Reemplaza el hexágono CustomPaint. Para revertir, comenta _logoImage y
+// descomenta _HexagonLogo en IadosLogo.build() e IadosFooter.build().
+Widget _logoImage(double size) => Image.asset(
+      'logo3_ia2.png',
+      width: size,
+      fit: BoxFit.fitWidth,
+    );
 
 class IadosLogo extends StatelessWidget {
   final double size;
@@ -20,7 +30,7 @@ class IadosLogo extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _HexagonLogo(size: size),
+        _logoImage(size), // logo3_ia2.png — para revertir: _HexagonLogo(size: size)
         if (showText) ...[
           const SizedBox(height: 12),
           Text(
@@ -28,7 +38,7 @@ class IadosLogo extends StatelessWidget {
             style: TextStyle(
               fontSize: size * 0.32,
               fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
+              color: context.colors.textPrimary,
               letterSpacing: -0.5,
             ),
           ),
@@ -37,7 +47,7 @@ class IadosLogo extends StatelessWidget {
             style: TextStyle(
               fontSize: size * 0.22,
               fontWeight: FontWeight.w500,
-              color: AppColors.primary,
+              color: context.colors.primary,
               letterSpacing: 2,
             ),
           ),
@@ -47,6 +57,8 @@ class IadosLogo extends StatelessWidget {
   }
 }
 
+// ─── Hexágono original (comentado para revertir si hace falta) ───────────────
+/*
 class _HexagonLogo extends StatelessWidget {
   final double size;
   const _HexagonLogo({required this.size});
@@ -81,37 +93,26 @@ class _HexPainter extends CustomPainter {
     final cy = size.height / 2;
     final r = size.width / 2;
 
-    // Outer hexagon — filled gradient
     final path = _hexPath(cx, cy, r);
-
     final gradient = const LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [AppColors.primary, AppColors.primaryDark],
     ).createShader(Rect.fromCircle(center: Offset(cx, cy), radius: r));
-
     canvas.drawPath(path, Paint()..shader = gradient);
 
-    // Inner hexagon ring
     final innerPath = _hexPath(cx, cy, r * 0.78);
-    canvas.drawPath(
-      innerPath,
-      Paint()
-        ..color = AppColors.bgDark.withOpacity(0.25)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2,
-    );
+    canvas.drawPath(innerPath, Paint()
+      ..color = AppColors.bgDark.withOpacity(0.25)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2);
 
-    // Glow outer ring
     final outerPath = _hexPath(cx, cy, r * 0.98);
-    canvas.drawPath(
-      outerPath,
-      Paint()
-        ..color = AppColors.primary.withOpacity(0.3)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5
-        ..maskFilter = const MaskFilter.blur(BlurStyle.outer, 4),
-    );
+    canvas.drawPath(outerPath, Paint()
+      ..color = AppColors.primary.withOpacity(0.3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..maskFilter = const MaskFilter.blur(BlurStyle.outer, 4));
   }
 
   Path _hexPath(double cx, double cy, double r) {
@@ -120,11 +121,7 @@ class _HexPainter extends CustomPainter {
       final angle = (math.pi / 180) * (60 * i - 30);
       final x = cx + r * math.cos(angle);
       final y = cy + r * math.sin(angle);
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
+      if (i == 0) { path.moveTo(x, y); } else { path.lineTo(x, y); }
     }
     path.close();
     return path;
@@ -133,6 +130,7 @@ class _HexPainter extends CustomPainter {
   @override
   bool shouldRepaint(_HexPainter oldDelegate) => false;
 }
+*/
 
 // Badge hexagonal pequeño para avatares / estados
 class HexBadge extends StatelessWidget {
@@ -209,16 +207,16 @@ class IadosFooter extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _HexagonLogo(size: 16),
+          _logoImage(16), // logo3_ia2.png — para revertir: _HexagonLogo(size: 16)
           const SizedBox(width: 6),
-          const Text(
+          Text(
             'iados.mx',
             style: TextStyle(
-              color: AppColors.textMuted,
+              color: context.colors.textMuted,
               fontSize: 12,
               letterSpacing: 0.5,
               decoration: TextDecoration.underline,
-              decorationColor: AppColors.textMuted,
+              decorationColor: context.colors.textMuted,
             ),
           ),
         ],

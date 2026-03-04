@@ -34,7 +34,7 @@ async function createIntegration(tenantId, data) {
 
   const passwordHash = password ? await bcrypt.hash(password, 10) : undefined;
 
-  return prisma.integrationConfig.create({
+  const created = await prisma.integrationConfig.create({
     data: {
       tenantId,
       ...rest,
@@ -47,6 +47,20 @@ async function createIntegration(tenantId, data) {
       config: true, isActive: true, status: true, createdAt: true,
     },
   });
+
+  // Verificar si el topic MQTT ya está en uso en otro fraccionamiento
+  let warning = null;
+  if (created.mqttTopic) {
+    const dup = await prisma.integrationConfig.findFirst({
+      where: { mqttTopic: created.mqttTopic, tenantId: { not: tenantId } },
+      select: { tenant: { select: { name: true } } },
+    });
+    if (dup) {
+      warning = `El topic MQTT "${created.mqttTopic}" ya está configurado en: "${dup.tenant.name}". Verifica que el dispositivo no esté siendo compartido.`;
+    }
+  }
+
+  return { ...created, warning };
 }
 
 async function updateIntegration(tenantId, id, data) {
@@ -56,7 +70,7 @@ async function updateIntegration(tenantId, id, data) {
   const { password, config, ...rest } = data;
   const passwordHash = password ? await bcrypt.hash(password, 10) : undefined;
 
-  return prisma.integrationConfig.update({
+  const updated = await prisma.integrationConfig.update({
     where: { id },
     data: {
       ...rest,
@@ -69,6 +83,19 @@ async function updateIntegration(tenantId, id, data) {
       config: true, isActive: true, status: true, updatedAt: true,
     },
   });
+
+  let warning = null;
+  if (updated.mqttTopic) {
+    const dup = await prisma.integrationConfig.findFirst({
+      where: { mqttTopic: updated.mqttTopic, tenantId: { not: tenantId }, id: { not: id } },
+      select: { tenant: { select: { name: true } } },
+    });
+    if (dup) {
+      warning = `El topic MQTT "${updated.mqttTopic}" ya está configurado en: "${dup.tenant.name}". Verifica que el dispositivo no esté siendo compartido.`;
+    }
+  }
+
+  return { ...updated, warning };
 }
 
 async function deleteIntegration(tenantId, id) {
@@ -125,9 +152,30 @@ async function getTenantSettings(tenantId) {
 }
 
 async function updateTenantSettings(tenantId, data) {
+  const { featureFlags, uiTheme, paymentConfig, emergencyNumbers, serviceQrConfig, ...tenantFields } = data;
+
+  const hasSettingsChange = featureFlags !== undefined || uiTheme !== undefined
+    || paymentConfig !== undefined || emergencyNumbers !== undefined || serviceQrConfig !== undefined;
+
+  if (hasSettingsChange) {
+    const current = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+    const currentSettings = (current?.settings && typeof current.settings === 'object') ? current.settings : {};
+    const currentFlags = (currentSettings.featureFlags && typeof currentSettings.featureFlags === 'object') ? currentSettings.featureFlags : {};
+    const currentSvcQr = (currentSettings.serviceQrConfig && typeof currentSettings.serviceQrConfig === 'object') ? currentSettings.serviceQrConfig : {};
+
+    tenantFields.settings = {
+      ...currentSettings,
+      ...(featureFlags !== undefined && { featureFlags: { ...currentFlags, ...featureFlags } }),
+      ...(uiTheme !== undefined && { uiTheme }),
+      ...(paymentConfig !== undefined && { paymentConfig }),
+      ...(emergencyNumbers !== undefined && { emergencyNumbers }),
+      ...(serviceQrConfig !== undefined && { serviceQrConfig: { ...currentSvcQr, ...serviceQrConfig } }),
+    };
+  }
+
   return prisma.tenant.update({
     where: { id: tenantId },
-    data,
+    data: tenantFields,
     select: { id: true, name: true, slug: true, address: true, phone: true, email: true, logo: true, settings: true },
   });
 }
