@@ -1077,12 +1077,13 @@ class _ServiceRequestLogItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final isLight = Theme.of(context).brightness == Brightness.light;
-    final service   = data['service']  as String? ?? 'Servicio';
-    final status    = data['status']   as String? ?? 'PENDING';
-    final phone     = data['visitorPhone'] as String? ?? '';
-    final createdAt = data['createdAt'] as String?;
-    final unit      = data['unit']     as Map?;
-    final identifier = unit?['identifier'] as String?;
+    final service         = data['service']         as String? ?? 'Servicio';
+    final status          = data['status']          as String? ?? 'PENDING';
+    final phone           = data['visitorPhone']    as String? ?? '';
+    final createdAt       = data['createdAt']       as String?;
+    final unit            = data['unit']            as Map?;
+    final identifier      = unit?['identifier']     as String?;
+    final destinationType = data['destinationType'] as String? ?? 'UNIT';
 
     final emoji = _serviceIcons[service] ?? '🔔';
     final statusColor = _statusColor(status, c);
@@ -1100,8 +1101,16 @@ class _ServiceRequestLogItem extends StatelessWidget {
       } catch (_) {}
     }
 
+    final destLabel = identifier != null
+        ? 'Unidad $identifier'
+        : destinationType == 'COMMITTEE'
+            ? 'Comité'
+            : destinationType == 'GUARD'
+                ? 'Guardia'
+                : '';
+
     final subtitle = [
-      if (identifier != null) 'Unidad $identifier',
+      if (destLabel.isNotEmpty) destLabel,
       if (phone.isNotEmpty) phone,
     ].join(' · ');
 

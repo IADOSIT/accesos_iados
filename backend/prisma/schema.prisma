@@ -423,6 +423,12 @@ enum ServiceRequestStatus {
   EXPIRED
 }
 
+enum ServiceRequestDestination {
+  UNIT
+  COMMITTEE
+  GUARD
+}
+
 model ServiceQR {
   id        String   @id @default(uuid())
   tenantId  String   @unique
@@ -444,7 +450,8 @@ model ServiceRequest {
   service      String
   photoData    String?              @db.Text
   visitorPhone String?
-  status       ServiceRequestStatus @default(PENDING)
+  status          ServiceRequestStatus        @default(PENDING)
+  destinationType ServiceRequestDestination   @default(UNIT)
   approvedById String?
   approvedAt   DateTime?
   deviceId        String?

@@ -69,7 +69,8 @@ async function getPublicInfo(code) {
 // ── Crear solicitud (visitante) ─────────────────────────────────────────────
 
 async function submitRequest(tenantId, qrId, data) {
-  const { unitId, service, photoData, visitorPhone } = data;
+  const { unitId, service, photoData, visitorPhone, destinationType } = data;
+  const dest = (destinationType === 'COMMITTEE' || destinationType === 'GUARD') ? destinationType : 'UNIT';
 
   // Validar que el QR pertenece al tenant
   const qr = await prisma.serviceQR.findFirst({ where: { id: qrId, tenantId } });
@@ -89,11 +90,12 @@ async function submitRequest(tenantId, qrId, data) {
     data: {
       tenantId,
       qrId,
-      unitId: unitId || null,
+      unitId: dest === 'UNIT' ? (unitId || null) : null,
       service,
       photoData: photoData || null,
       visitorPhone: visitorPhone || null,
       expiresAt,
+      destinationType: dest,
     },
     include: {
       unit: { select: { id: true, identifier: true, block: true } },
@@ -102,7 +104,7 @@ async function submitRequest(tenantId, qrId, data) {
 
   const unitLabel = request.unit
     ? `Unidad ${request.unit.identifier}${request.unit.block ? ` – Manzana ${request.unit.block}` : ''}`
-    : 'Sin unidad';
+    : dest === 'COMMITTEE' ? 'Comité' : dest === 'GUARD' ? 'Guardia' : 'Sin unidad';
 
   const title = `🔔 Solicitud: ${service}`;
   const body = unitLabel;
@@ -116,17 +118,22 @@ async function submitRequest(tenantId, qrId, data) {
     visitorPhone: visitorPhone || '',
     hasPhoto: photoData ? 'true' : 'false',
     expiresAt: expiresAt.toISOString(),
+    destinationType: dest,
     tenantId,
   };
 
-  // Notificar al residente: push full-screen (data-only Android + APNS iOS time-sensitive)
-  if (unitId) {
+  if (dest === 'UNIT' && unitId) {
+    // Notificar al residente (full-screen) + GUARD + ADMIN
     notif.sendServiceRequestToUnit(tenantId, unitId, 'SERVICE_REQUEST', title, body, fcmData);
+    notif.sendUrgentToRole(tenantId, 'GUARD', 'SERVICE_REQUEST', title, body, fcmData);
+    notif.sendUrgentToRole(tenantId, 'ADMIN', 'SERVICE_REQUEST', title, body, fcmData);
+  } else if (dest === 'COMMITTEE') {
+    // Solo notificar a ADMIN
+    notif.sendUrgentToRole(tenantId, 'ADMIN', 'SERVICE_REQUEST', title, body, fcmData);
+  } else if (dest === 'GUARD') {
+    // Solo notificar a GUARD
+    notif.sendUrgentToRole(tenantId, 'GUARD', 'SERVICE_REQUEST', title, body, fcmData);
   }
-
-  // Notificar a GUARD y ADMIN (siempre, urgente)
-  notif.sendUrgentToRole(tenantId, 'GUARD', 'SERVICE_REQUEST', title, body, fcmData);
-  notif.sendUrgentToRole(tenantId, 'ADMIN', 'SERVICE_REQUEST', title, body, fcmData);
 
   return { id: request.id, expiresAt, service, unitLabel };
 }
@@ -170,7 +177,7 @@ async function listRequests(tenantId, userId, role, { skip, limit, status }) {
       where,
       select: {
         id: true, service: true, status: true, visitorPhone: true,
-        photoData: true,
+        photoData: true, destinationType: true,
         expiresAt: true, approvedAt: true, approvedById: true, notes: true,
         createdAt: true,
         unit: { select: { identifier: true, block: true } },

@@ -58,6 +58,7 @@ interface StatusData {
 
 export default function ServiceForm({ info }: { info: PublicInfo }) {
   const [selectedService, setSelectedService] = useState('');
+  const [destinationType, setDestinationType] = useState<'UNIT' | 'COMMITTEE' | 'GUARD'>('UNIT');
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
   const [visitorPhone, setVisitorPhone] = useState('');
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
@@ -136,8 +137,8 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
 
   async function handleSubmit() {
     if (!selectedService) return;
-    if (info.requireUnit && !selectedUnit) { setError('La residencia es obligatoria'); return; }
-    if (info.requirePhoto && !photoBase64) { setError('La foto es obligatoria'); return; }
+    if (destinationType === 'UNIT' && info.requireUnit && !selectedUnit) { setError('La residencia es obligatoria'); return; }
+    if (destinationType === 'UNIT' && info.requirePhoto && !photoBase64) { setError('La foto es obligatoria'); return; }
     setSubmitting(true);
     setError('');
     try {
@@ -148,8 +149,9 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
           tenantId: info.tenantId,
           qrId: info.qrId,
           service: selectedService,
-          unitId: selectedUnit?.id || null,
-          photoData: photoBase64 || null,
+          destinationType,
+          unitId: destinationType === 'UNIT' ? (selectedUnit?.id || null) : null,
+          photoData: destinationType === 'UNIT' ? (photoBase64 || null) : null,
           visitorPhone: visitorPhone.trim() || null,
         }),
       });
@@ -397,27 +399,55 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
               </div>
             </div>
 
-            {/* 2 — Residencia */}
+            {/* 2 — Destino */}
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                2. ¿A qué residencia vas?{' '}
-                {info.requireUnit
-                  ? <span className="font-normal text-red-400">*obligatorio</span>
-                  : <span className="font-normal text-slate-400">(opcional)</span>}
+                2. ¿A quién va dirigido?
               </p>
-              <select value={selectedUnit?.id || ''}
-                onChange={e => setSelectedUnit(info.units.find(u => u.id === e.target.value) || null)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                <option value="">— Seleccionar residencia —</option>
-                {info.units.map(u => (
-                  <option key={u.id} value={u.id}>
-                    {u.identifier}{u.ownerFirstName ? ` — ${u.ownerFirstName}` : ''}
-                    {info.showResidentPhone && u.phone ? ` · ${u.phone}` : ''}
-                  </option>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { value: 'UNIT', icon: '🏠', label: 'Residencia' },
+                  { value: 'COMMITTEE', icon: '🏛️', label: 'Comité' },
+                  { value: 'GUARD', icon: '💂', label: 'Guardia' },
+                ] as const).map(opt => (
+                  <button key={opt.value} onClick={() => { setDestinationType(opt.value); setSelectedUnit(null); }}
+                    className={`flex flex-col items-center gap-1 py-3 px-2 rounded-2xl border-2 text-center transition-all ${
+                      destinationType === opt.value
+                        ? 'border-emerald-500 bg-emerald-50'
+                        : 'border-slate-200 bg-slate-50 hover:border-slate-300'
+                    }`}>
+                    <span className="text-2xl">{opt.icon}</span>
+                    <span className={`text-xs font-medium leading-tight ${destinationType === opt.value ? 'text-emerald-700' : 'text-slate-600'}`}>
+                      {opt.label}
+                    </span>
+                  </button>
                 ))}
-              </select>
-              {info.showResidentPhone && selectedUnit?.phone && (
-                <p className="mt-1.5 text-xs text-emerald-600 font-medium">📞 {selectedUnit.phone}</p>
+              </div>
+
+              {/* Selector de unidad — solo si destino es UNIT */}
+              {destinationType === 'UNIT' && (
+                <div className="mt-3">
+                  <p className="text-xs text-slate-400 mb-1.5">
+                    ¿A qué residencia?{' '}
+                    {info.requireUnit
+                      ? <span className="text-red-400">*obligatorio</span>
+                      : <span>(opcional)</span>}
+                  </p>
+                  <select value={selectedUnit?.id || ''}
+                    onChange={e => setSelectedUnit(info.units.find(u => u.id === e.target.value) || null)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <option value="">— Seleccionar residencia —</option>
+                    {info.units.map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.identifier}{u.ownerFirstName ? ` — ${u.ownerFirstName}` : ''}
+                        {info.showResidentPhone && u.phone ? ` · ${u.phone}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {info.showResidentPhone && selectedUnit?.phone && (
+                    <p className="mt-1.5 text-xs text-emerald-600 font-medium">📞 {selectedUnit.phone}</p>
+                  )}
+                </div>
               )}
             </div>
 
@@ -431,7 +461,8 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
                 className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
             </div>
 
-            {/* 4 — Foto */}
+            {/* 4 — Foto (solo si destino es UNIT) */}
+            {destinationType === 'UNIT' && (
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
                 4. Foto{' '}
@@ -459,6 +490,7 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
                 </button>
               )}
             </div>
+            )}
 
             {/* Enviar */}
             <button disabled={!selectedService || submitting} onClick={handleSubmit}
