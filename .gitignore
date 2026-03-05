@@ -13,5 +13,3 @@ vps/backend.env.production
 *firebase-adminsdk*.json
 firebase-key.json
 
-# Docker compose de producción — tiene credenciales, se maneja en VPS
-docker-compose.yml
