@@ -477,6 +477,30 @@ export default function ServiceForm({ info }: { info: PublicInfo }) {
 
           </div>
 
+          {/* Guía de pasos */}
+          <div className="px-5 pt-1 pb-5">
+            <p className="text-center text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-3">
+              ¿Cómo funciona?
+            </p>
+            <div className="relative flex items-start justify-between">
+              <div className="absolute top-5 left-5 right-5 h-0.5 bg-emerald-100 z-0" />
+              {[
+                { icon: '📷', label: 'Escanea el QR del acceso' },
+                { icon: '⚡', label: 'Elige tu servicio' },
+                { icon: '🏠', label: 'Indica la residencia' },
+                { icon: '📸', label: 'Agrega tu foto' },
+                { icon: '✅', label: 'Espera confirmación' },
+              ].map((step, i) => (
+                <div key={i} className="relative z-10 flex flex-col items-center gap-1.5 flex-1">
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 border-2 border-emerald-200 flex items-center justify-center text-lg shadow-sm">
+                    {step.icon}
+                  </div>
+                  <p className="text-center text-[10px] text-slate-500 leading-tight px-0.5">{step.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <div className="border-t border-slate-100 px-6 py-3 flex items-center justify-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo3_ia2.png" alt="iaDoS" className="h-4 w-auto opacity-50" />

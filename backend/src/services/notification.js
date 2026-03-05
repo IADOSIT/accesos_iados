@@ -214,7 +214,7 @@ function sendUrgentToUnit(tenantId, unitId, type, title, body, data) {
 function sendServiceRequestToUnit(tenantId, unitId, type, title, body, data) {
   (async () => {
     const residents = await prisma.userTenant.findMany({
-      where: { tenantId, unitId, isActive: true },
+      where: { tenantId, unitId, isActive: true, role: 'RESIDENT' },
       select: { userId: true },
     });
     const userIds = [...new Set(residents.map(r => r.userId))];
