@@ -14,7 +14,14 @@ if (env.FIREBASE_KEY_PATH || env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     } else {
       const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
       if (serviceAccount.private_key) {
-        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+        let key = serviceAccount.private_key.replace(/\\n/g, '\n').trim();
+        const pemMatch = key.match(/-----BEGIN PRIVATE KEY-----([^-]+)-----END PRIVATE KEY-----/);
+        if (pemMatch) {
+          const b64 = pemMatch[1].replace(/\s+/g, '');
+          const wrapped = b64.match(/.{1,64}/g).join('\n');
+          key = `-----BEGIN PRIVATE KEY-----\n${wrapped}\n-----END PRIVATE KEY-----\n`;
+        }
+        serviceAccount.private_key = key;
       }
       credential = admin.credential.cert(serviceAccount);
       console.log('[FCM] Firebase Admin inicializado desde variable de entorno');
