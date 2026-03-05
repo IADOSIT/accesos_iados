@@ -4,6 +4,7 @@ services:
   backend:
     build: ./backend
     container_name: iados-api
+    # Asegúrate de que 'ports' esté al mismo nivel que 'build' y 'environment'
     ports:
       - "3004:3001"
     environment:
