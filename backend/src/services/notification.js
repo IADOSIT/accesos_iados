@@ -13,6 +13,9 @@ if (env.FIREBASE_KEY_PATH || env.FIREBASE_SERVICE_ACCOUNT_JSON) {
       console.log('[FCM] Firebase Admin inicializado desde archivo:', env.FIREBASE_KEY_PATH);
     } else {
       const serviceAccount = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      if (serviceAccount.private_key) {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
       credential = admin.credential.cert(serviceAccount);
       console.log('[FCM] Firebase Admin inicializado desde variable de entorno');
     }
