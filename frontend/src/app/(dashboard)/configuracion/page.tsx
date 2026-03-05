@@ -371,6 +371,38 @@ function QrPosterModal({
           </div>
         </div>
 
+        {/* Guía de pasos */}
+        <div style={{ padding: '0 28px 20px' }}>
+          <div style={{ fontSize: '10px', fontWeight: '700', color: '#94a3b8', letterSpacing: '1.5px', textTransform: 'uppercase', textAlign: 'center', marginBottom: '14px' }}>
+            ¿Cómo funciona?
+          </div>
+          <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            {/* Línea conectora */}
+            <div style={{ position: 'absolute', top: '20px', left: '20px', right: '20px', height: '2px', background: '#d1fae5', zIndex: 0 }} />
+            {[
+              { icon: '📷', label: 'Escanea el QR' },
+              { icon: '⚡', label: 'Elige tu servicio' },
+              { icon: '🏠', label: 'Indica residencia' },
+              { icon: '📸', label: 'Foto ID' },
+              { icon: '✅', label: 'Espera respuesta' },
+            ].map((step, i) => (
+              <div key={i} style={{ position: 'relative', zIndex: 1, flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                <div style={{
+                  width: '40px', height: '40px', borderRadius: '50%',
+                  background: '#ecfdf5', border: '2px solid #a7f3d0',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '18px', boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
+                }}>
+                  {step.icon}
+                </div>
+                <div style={{ fontSize: '9px', fontWeight: '600', color: '#64748b', textAlign: 'center', lineHeight: 1.3, padding: '0 2px' }}>
+                  {step.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div style={{ height: '1px', background: 'linear-gradient(90deg, transparent, #e2e8f0, transparent)', margin: '0 28px' }} />
 
         <div style={{
