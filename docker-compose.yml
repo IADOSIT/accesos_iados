@@ -1,6 +1,19 @@
 version: '3.8'
 
 services:
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: iados-nginx
+    restart: unless-stopped
+    ports:
+      - "3004:80"
+    networks:
+      - web_network
+    depends_on:
+      - frontend
+
   backend:
     build: ./backend
     container_name: iados-api
