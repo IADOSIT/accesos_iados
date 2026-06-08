@@ -16,9 +16,13 @@ git pull --quiet
 VERSION=$(cat VERSION 2>/dev/null || echo "?")
 echo "  Versión: $VERSION"
 
-# ── 2. Docker compose up --build ─────────────────────────────────
-echo "[2/2] Reconstruyendo y reiniciando contenedores..."
-docker compose up -d --build
+# ── 2. Limpiar contenedores huérfanos con el mismo nombre ────────
+echo "[2/3] Limpiando contenedores anteriores..."
+docker rm -f iados-api iados-web 2>/dev/null || true
+
+# ── 3. Docker compose up --build ─────────────────────────────────
+echo "[3/3] Reconstruyendo y reiniciando contenedores..."
+docker compose up -d --build --remove-orphans
 
 echo ""
 echo "── Deploy completado ──────────────────────────────────"
