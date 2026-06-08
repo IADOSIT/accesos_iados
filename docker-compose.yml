@@ -5,7 +5,7 @@ services:
     build:
       context: ./nginx
       dockerfile: Dockerfile
-    container_name: iados-nginx
+    container_name: accesos-nginx
     restart: unless-stopped
     ports:
       - "3004:80"
@@ -16,7 +16,7 @@ services:
 
   backend:
     build: ./backend
-    container_name: iados-api
+    container_name: accesos-api
     environment:
       - DATABASE_URL=postgresql://administrador:U191tl1ebFN2RJR0fld5QhC8U29AhdOQ@postgres_local:5432/iados_accesos?sslmode=disable
       - JWT_SECRET=cambiar-en-produccion-clave-segura-min-32-chars
@@ -48,7 +48,7 @@ services:
       context: ./frontend
       args:
         - NEXT_PUBLIC_API_URL=https://accesodigitalapi.iados.mx/api
-    container_name: iados-web
+    container_name: accesos-web
     environment:
       - NEXT_PUBLIC_API_URL=https://accesodigitalapi.iados.mx/api
       - API_URL=http://backend:3001/api
