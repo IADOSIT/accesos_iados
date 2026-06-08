@@ -3,9 +3,9 @@ version: '3.8'
 services:
   backend:
     build: ./backend
-    container_name: iados-api-app
+    container_name: iados-api
     ports:
-      - "3007:3001"
+      - "3004:3001"
     environment:
       - DATABASE_URL=postgresql://administrador:U191tl1ebFN2RJR0fld5QhC8U29AhdOQ@postgres_local:5432/iados_accesos?sslmode=disable
       - JWT_SECRET=cambiar-en-produccion-clave-segura-min-32-chars
@@ -37,9 +37,9 @@ services:
       context: ./frontend
       args:
         - NEXT_PUBLIC_API_URL=https://accesodigitalapi.iados.mx/api
-    container_name: iados-web-app
+    container_name: iados-web
     ports:
-      - "3008:3002"
+      - "3005:3002"
     environment:
       - NEXT_PUBLIC_API_URL=https://accesodigitalapi.iados.mx/api
       - API_URL=http://backend:3001/api
