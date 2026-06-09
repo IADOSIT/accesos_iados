@@ -116,7 +116,8 @@ class _MainShell extends ConsumerStatefulWidget {
 class _MainShellState extends ConsumerState<_MainShell> {
   int _currentIndex = 0;
 
-  static const _allTabs = [
+  // Tabs por defecto — se usan cuando el tenant no tiene dashboardConfig configurado
+  static const _defaultTabs = [
     (path: '/dashboard',      icon: Icons.grid_view_rounded,        label: 'Inicio',       roles: <String>['ADMIN','GUARD','RESIDENT']),
     (path: '/access',         icon: Icons.swap_horiz_rounded,       label: 'Accesos',      roles: <String>['ADMIN','GUARD']),
     (path: '/visitors',       icon: Icons.qr_code_scanner_rounded,  label: 'Visitantes',   roles: <String>['ADMIN','RESIDENT']),
@@ -124,9 +125,36 @@ class _MainShellState extends ConsumerState<_MainShell> {
     (path: '/notifications',  icon: Icons.notifications_rounded,    label: 'Alertas',      roles: <String>['ADMIN','GUARD','RESIDENT']),
   ];
 
-  List<({String path, IconData icon, String label, List<String> roles})> _visibleTabs(String? role) {
-    if (role == null) return _allTabs;
-    return _allTabs.where((t) => t.roles.contains(role)).toList();
+  // Registro: clave de backend → metadata de navegación (path, icon, roles)
+  static final _registry = <String, ({String path, IconData icon, List<String> roles})>{
+    'inicio':         (path: '/dashboard',     icon: Icons.grid_view_rounded,       roles: ['ADMIN','GUARD','RESIDENT']),
+    'accesos':        (path: '/access',        icon: Icons.swap_horiz_rounded,      roles: ['ADMIN','GUARD']),
+    'visitantes':     (path: '/visitors',      icon: Icons.qr_code_scanner_rounded, roles: ['ADMIN','RESIDENT']),
+    'pagos':          (path: '/payments',      icon: Icons.receipt_long_rounded,    roles: ['ADMIN','RESIDENT']),
+    'notificaciones': (path: '/notifications', icon: Icons.notifications_rounded,   roles: ['ADMIN','GUARD','RESIDENT']),
+    'guia_amarilla':  (path: '/guia-amarilla', icon: Icons.book_rounded,            roles: ['ADMIN','GUARD','RESIDENT']),
+  };
+
+  List<({String path, IconData icon, String label, List<String> roles})> _buildTabs(
+    String? role,
+    List<DashboardItem> configItems,
+  ) {
+    if (configItems.isEmpty) {
+      if (role == null) return _defaultTabs.toList();
+      return _defaultTabs.where((t) => t.roles.contains(role)).toList();
+    }
+
+    final sorted = [...configItems]..sort((a, b) => a.orden.compareTo(b.orden));
+
+    return sorted
+        .where((item) => item.activo && _registry.containsKey(item.key))
+        .map((item) {
+          final reg = _registry[item.key]!;
+          return (path: reg.path, icon: reg.icon, label: item.label, roles: reg.roles);
+        })
+        .where((t) => role == null || t.roles.contains(role))
+        .take(5)
+        .toList();
   }
 
   @override
@@ -273,7 +301,8 @@ class _MainShellState extends ConsumerState<_MainShell> {
   @override
   Widget build(BuildContext context) {
     final role = ref.watch(authProvider).role;
-    final tabs = _visibleTabs(role);
+    final configItems = ref.watch(tenantConfigProvider).valueOrNull?.dashboardConfig ?? [];
+    final tabs = _buildTabs(role, configItems);
 
     final safeIndex = _currentIndex < tabs.length ? _currentIndex : 0;
 

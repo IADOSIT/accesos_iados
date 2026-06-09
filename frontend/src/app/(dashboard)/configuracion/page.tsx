@@ -221,8 +221,35 @@ const STATUS_BADGE: Record<IntegrationStatus, { label: string; cls: string }> = 
   CONNECTING: { label: 'Conectando',  cls: 'bg-yellow-100 text-yellow-700' },
 };
 
+// ── Dashboard config ─────────────────────────────────────────────
+interface DashboardItem {
+  key: string;
+  label: string;
+  icon: string;
+  activo: boolean;
+  orden: number;
+}
+
+const DASHBOARD_META: Record<string, { emoji: string; description: string; required?: boolean }> = {
+  inicio:         { emoji: '🏠', description: 'Pantalla principal con estadísticas y botones de acceso', required: true },
+  accesos:        { emoji: '🚪', description: 'Bitácora de entradas y salidas' },
+  visitantes:     { emoji: '📲', description: 'Generador de QR para visitas' },
+  pagos:          { emoji: '💳', description: 'Cargos y pagos de mantenimiento' },
+  notificaciones: { emoji: '🔔', description: 'Historial de alertas push', required: true },
+  guia_amarilla:  { emoji: '📒', description: 'Directorio de servicios del fraccionamiento' },
+};
+
+const DEFAULT_DASHBOARDS: DashboardItem[] = [
+  { key: 'inicio',         label: 'Inicio',      icon: 'grid_view',    activo: true,  orden: 0 },
+  { key: 'accesos',        label: 'Accesos',     icon: 'swap_horiz',   activo: true,  orden: 1 },
+  { key: 'visitantes',     label: 'Visitantes',  icon: 'qr_code',      activo: true,  orden: 2 },
+  { key: 'pagos',          label: 'Pagos',       icon: 'receipt',      activo: true,  orden: 3 },
+  { key: 'notificaciones', label: 'Alertas',     icon: 'notification', activo: true,  orden: 4 },
+  { key: 'guia_amarilla',  label: 'Directorio',  icon: 'book',         activo: false, orden: 5 },
+];
+
 // ── Tabs ────────────────────────────────────────────────────────
-type ConfigTab = 'cuenta' | 'fraccionamiento' | 'cobros' | 'emergencias' | 'servicios' | 'guia-amarilla' | 'publicidad' | 'integraciones' | 'mantenimiento';
+type ConfigTab = 'cuenta' | 'fraccionamiento' | 'cobros' | 'emergencias' | 'servicios' | 'guia-amarilla' | 'publicidad' | 'dashboards' | 'integraciones' | 'mantenimiento';
 
 const TABS: { key: ConfigTab; label: string; superAdminOnly?: boolean }[] = [
   { key: 'cuenta',          label: 'Cuenta' },
@@ -232,6 +259,7 @@ const TABS: { key: ConfigTab; label: string; superAdminOnly?: boolean }[] = [
   { key: 'servicios',       label: 'Servicios QR' },
   { key: 'guia-amarilla',   label: 'Guía Amarilla' },
   { key: 'publicidad',      label: 'Publicidad' },
+  { key: 'dashboards',      label: 'Dashboards' },
   { key: 'integraciones',   label: 'Integraciones' },
   { key: 'mantenimiento',   label: '🔧 Mantenimiento', superAdminOnly: true },
 ];
@@ -1027,6 +1055,12 @@ export default function ConfiguracionPage() {
   // ── Dispositivos (para selectors) ──
   const [devices, setDevices] = useState<{ id: string; name: string; status: string }[]>([]);
 
+  // ── Dashboards config ──
+  const [dashboardItems, setDashboardItems] = useState<DashboardItem[]>([...DEFAULT_DASHBOARDS]);
+  const [dashboardMsg, setDashboardMsg] = useState('');
+  const [dashboardErr, setDashboardErr] = useState('');
+  const [savingDashboards, setSavingDashboards] = useState(false);
+
   // ── Integraciones ──
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [showIntModal, setShowIntModal] = useState(false);
@@ -1054,6 +1088,9 @@ export default function ConfiguracionPage() {
       if (s.delinquentPolicy) setDelinquentPolicy({ ...DEFAULT_DELINQUENT_POLICY, ...s.delinquentPolicy });
       if (s.emergencyNumbers) setEmergencyNums(s.emergencyNumbers);
       if (s.serviceQrConfig) setSvcQrCfg({ ...DEFAULT_SVC_QR, ...s.serviceQrConfig });
+      if (s.dashboardConfig && Array.isArray(s.dashboardConfig) && s.dashboardConfig.length > 0) {
+        setDashboardItems(s.dashboardConfig);
+      }
     }).catch(() => {});
     serviceQrApi.currentQR().then((res: any) => {
       if (res.data?.url) setSvcQrUrl(res.data.url);
@@ -1407,6 +1444,37 @@ export default function ConfiguracionPage() {
   }
   function removeService(idx: number) {
     setSvcQrCfg(c => ({ ...c, services: c.services.filter((_, i) => i !== idx) }));
+  }
+
+  // ── Handlers Dashboards ──
+  const handleSaveDashboards = async () => {
+    setSavingDashboards(true); setDashboardMsg(''); setDashboardErr('');
+    try {
+      const payload = dashboardItems.map((d, i) => ({ ...d, orden: i }));
+      await configApi.updateTenant({ dashboardConfig: payload });
+      setDashboardMsg('Configuración de dashboards guardada');
+      setTimeout(() => setDashboardMsg(''), 3000);
+    } catch (err) {
+      setDashboardErr(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setSavingDashboards(false);
+    }
+  };
+
+  function moveDashboard(idx: number, dir: -1 | 1) {
+    setDashboardItems((items) => {
+      const arr = [...items];
+      const target = idx + dir;
+      if (target < 0 || target >= arr.length) return arr;
+      [arr[idx], arr[target]] = [arr[target], arr[idx]];
+      return arr.map((d, i) => ({ ...d, orden: i }));
+    });
+  }
+
+  function toggleDashboard(key: string) {
+    setDashboardItems((items) =>
+      items.map((d) => d.key === key ? { ...d, activo: !d.activo } : d)
+    );
   }
 
   // ── Handlers integraciones ──
@@ -2649,6 +2717,82 @@ export default function ConfiguracionPage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════
+          TAB: DASHBOARDS
+         ══════════════════════════════════ */}
+      {tab === 'dashboards' && canManage && (
+        <div className="space-y-6">
+          <div className="glass-card">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h3 className="font-semibold text-slate-700">Pantallas de la app</h3>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Activa, desactiva y reordena las secciones que aparecen en el menú inferior de la app.
+                  Los cambios se reflejan en la próxima apertura de la app.
+                </p>
+              </div>
+              <button onClick={handleSaveDashboards} disabled={savingDashboards}
+                className="btn-primary text-sm disabled:opacity-60 shrink-0 ml-4">
+                {savingDashboards ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+
+            {dashboardMsg && <div className="mt-4 bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl">{dashboardMsg}</div>}
+            {dashboardErr && <div className="mt-4 bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl">{dashboardErr}</div>}
+
+            <div className="mt-5 space-y-2">
+              {dashboardItems.map((item, idx) => {
+                const meta = DASHBOARD_META[item.key];
+                const isRequired = meta?.required === true;
+                return (
+                  <div key={item.key}
+                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                      item.activo ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 opacity-60'
+                    }`}>
+                    {/* Emoji + info */}
+                    <span className="text-2xl w-9 text-center shrink-0">{meta?.emoji ?? '📱'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-slate-800 text-sm">{item.label}</p>
+                      {meta?.description && (
+                        <p className="text-xs text-slate-400 truncate">{meta.description}</p>
+                      )}
+                    </div>
+
+                    {/* Toggle */}
+                    {isRequired ? (
+                      <span className="text-xs text-slate-400 shrink-0 pr-1">Siempre activo</span>
+                    ) : (
+                      <div
+                        className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0 ${item.activo ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                        onClick={() => toggleDashboard(item.key)}
+                      >
+                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${item.activo ? 'translate-x-5' : ''}`} />
+                      </div>
+                    )}
+
+                    {/* Reordenar */}
+                    <div className="flex flex-col gap-0.5 shrink-0">
+                      <button onClick={() => moveDashboard(idx, -1)} disabled={idx === 0}
+                        className="w-6 h-5 flex items-center justify-center rounded text-slate-400 hover:bg-slate-100 disabled:opacity-20 disabled:cursor-default text-xs">
+                        ▲
+                      </button>
+                      <button onClick={() => moveDashboard(idx, 1)} disabled={idx === dashboardItems.length - 1}
+                        className="w-6 h-5 flex items-center justify-center rounded text-slate-400 hover:bg-slate-100 disabled:opacity-20 disabled:cursor-default text-xs">
+                        ▼
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p className="mt-4 text-xs text-slate-400">
+              Máximo 5 secciones se muestran en el menú inferior de la app. Las que excedan ese límite se ocultarán automáticamente.
+            </p>
           </div>
         </div>
       )}

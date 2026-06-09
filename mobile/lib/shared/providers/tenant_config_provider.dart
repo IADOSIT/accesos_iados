@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/network/api_client.dart';
 import 'auth_provider.dart';
 
@@ -112,6 +114,32 @@ class PaymentConfig {
   bool get hasInfo => bankAccounts.isNotEmpty || monthlyAmount > 0;
 }
 
+// ── Dashboard Item ──────────────────────────────────────────────────────────
+
+class DashboardItem {
+  final String key;
+  final String label;
+  final String icon;
+  final bool activo;
+  final int orden;
+
+  const DashboardItem({
+    required this.key,
+    required this.label,
+    required this.icon,
+    this.activo = true,
+    this.orden = 0,
+  });
+
+  factory DashboardItem.fromJson(Map<String, dynamic> j) => DashboardItem(
+    key:    j['key']    as String? ?? '',
+    label:  j['label']  as String? ?? '',
+    icon:   j['icon']   as String? ?? '',
+    activo: j['activo'] as bool?   ?? true,
+    orden:  (j['orden'] as num?)?.toInt() ?? 0,
+  );
+}
+
 // ── ServiceQR Config ────────────────────────────────────────────────────────
 
 class ServiceQrConfig {
@@ -167,6 +195,7 @@ class TenantConfig {
   // Feature flags para nuevas features
   final bool guiaAmarillaEnabled;
   final bool advertisingEnabled;
+  final List<DashboardItem> dashboardConfig;
 
   const TenantConfig({
     this.showResidentAccessButton = false,
@@ -185,6 +214,7 @@ class TenantConfig {
     this.serviceQrConfig = const ServiceQrConfig(),
     this.guiaAmarillaEnabled = false,
     this.advertisingEnabled = false,
+    this.dashboardConfig = const [],
   });
 
   factory TenantConfig.fromJson(Map<String, dynamic> settings) {
@@ -219,6 +249,13 @@ class TenantConfig {
         ? settings['advertisingConfig'] as Map<String, dynamic>
         : <String, dynamic>{};
 
+    final rawDashboards = (settings['dashboardConfig'] is List)
+        ? (settings['dashboardConfig'] as List)
+            .whereType<Map>()
+            .map((e) => DashboardItem.fromJson(Map<String, dynamic>.from(e)))
+            .toList()
+        : <DashboardItem>[];
+
     return TenantConfig(
       showResidentAccessButton: flags['showResidentAccessButton'] as bool? ?? false,
       showVisitorAccessButton:  flags['showVisitorAccessButton']  as bool? ?? false,
@@ -236,6 +273,7 @@ class TenantConfig {
       serviceQrConfig:          svcQr,
       guiaAmarillaEnabled:      guiaAmarillaCfg['enabled'] as bool? ?? false,
       advertisingEnabled:       advertisingCfg['enabled']  as bool? ?? false,
+      dashboardConfig:          rawDashboards,
     );
   }
 
@@ -250,14 +288,30 @@ final tenantConfigProvider = FutureProvider.autoDispose<TenantConfig>((ref) asyn
     return const TenantConfig();
   }
   final api = ref.watch(apiClientProvider);
+  final cacheKey = 'tenant_config_${auth.tenantId}';
+
   try {
     final res = await api.get('/config/tenant');
     final data = res.data['data'];
     final settings = (data['settings'] is Map)
         ? data['settings'] as Map<String, dynamic>
         : <String, dynamic>{};
+
+    // Guardar en caché para uso offline
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(cacheKey, jsonEncode(settings));
+
     return TenantConfig.fromJson(settings);
   } catch (_) {
+    // Sin conexión — intentar caché local
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString(cacheKey);
+      if (cached != null) {
+        final settings = jsonDecode(cached) as Map<String, dynamic>;
+        return TenantConfig.fromJson(settings);
+      }
+    } catch (_) {}
     return const TenantConfig();
   }
 });

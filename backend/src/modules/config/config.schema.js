@@ -94,6 +94,20 @@ const featureFlagsSchema = z.object({
   visitorExitDeviceId: z.string().optional(),
 }).optional();
 
+// ── Dashboard config ──────────────────────────────────────────────
+
+const dashboardItemSchema = z.object({
+  key:    z.string().min(1),
+  label:  z.string().min(1),
+  icon:   z.string().min(1),
+  activo: z.boolean(),
+  orden:  z.number().int().min(0),
+});
+
+const dashboardConfigSchema = z.array(dashboardItemSchema).optional();
+
+// ─────────────────────────────────────────────────────────────────
+
 const updateTenantSchema = z.object({
   name: z.string().min(1).optional(),
   address: z.string().optional(),
@@ -105,6 +119,7 @@ const updateTenantSchema = z.object({
   paymentConfig: paymentConfigSchema,
   emergencyNumbers: emergencyNumbersSchema,
   serviceQrConfig: serviceQrConfigSchema,
+  dashboardConfig: dashboardConfigSchema,
 });
 
 module.exports = { createIntegrationSchema, updateIntegrationSchema, updateTenantSchema };
