@@ -932,6 +932,14 @@ export default function ConfiguracionPage() {
 
   const canManage = isAdmin || isSuperAdmin;
 
+  // ── Helper URL imágenes ──
+  const imgSrc = (imageUrl: string) => {
+    if (!imageUrl) return '';
+    if (imageUrl.startsWith('http')) return imageUrl;
+    const base = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api').replace(/\/api$/, '');
+    return `${base}${imageUrl}`;
+  };
+
   // ── Tab ──
   const [tab, setTab] = useState<ConfigTab>('cuenta');
 
@@ -2580,7 +2588,7 @@ export default function ConfiguracionPage() {
                 </label>
                 {adForm.imageUrl && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={`${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '')}${adForm.imageUrl}`}
+                  <img src={imgSrc(adForm.imageUrl)}
                     alt="preview" className="w-16 h-16 object-cover rounded-xl border border-slate-200" />
                 )}
               </div>
@@ -2612,7 +2620,7 @@ export default function ConfiguracionPage() {
                   <div key={ad.id} className={`rounded-xl border overflow-hidden transition-opacity ${ad.isActive ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}>
                     {ad.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={`${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '')}${ad.imageUrl}`}
+                      <img src={imgSrc(ad.imageUrl)}
                         alt={ad.businessName} className="w-full h-32 object-cover" />
                     ) : (
                       <div className="w-full h-32 bg-slate-100 flex items-center justify-center text-slate-400 text-3xl">📷</div>
