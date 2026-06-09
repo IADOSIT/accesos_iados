@@ -272,7 +272,7 @@ class DashboardScreen extends ConsumerWidget {
         return FadeInUp(
           delay: const Duration(milliseconds: 380),
           child: Column(
-            children: [const _AdvertisingCarousel(), const SizedBox(height: 16)],
+            children: [_AdvertisingCarousel(), const SizedBox(height: 16)],
           ),
         );
 
