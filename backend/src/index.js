@@ -70,7 +70,10 @@ app.use(morgan('combined'));
 
 // Servir archivos de uploads estáticos (bajo /api/ para que NPM los proxee)
 const path = require('path');
-app.use('/api/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/api/uploads', (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, '../uploads')));
 
 // Health check
 app.get('/api/health', (req, res) => {
