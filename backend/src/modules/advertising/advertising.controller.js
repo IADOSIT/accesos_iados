@@ -62,7 +62,8 @@ function uploadImage(req, res) {
   upload(req, res, (err) => {
     if (err) return error(res, err.message, 400);
     if (!req.file) return error(res, 'No se recibió imagen', 400);
-    const imageUrl = `/api/uploads/ads/${req.file.filename}`;
+    const base = process.env.BACKEND_PUBLIC_URL || '';
+    const imageUrl = `${base}/api/uploads/ads/${req.file.filename}`;
     return success(res, { imageUrl });
   });
 }

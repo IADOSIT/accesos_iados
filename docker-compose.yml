@@ -19,6 +19,7 @@ services:
       - MQTT_PASSWORD=iados22...
       - ACCESS_COOLDOWN_SECONDS=30
       - PORTAL_URL=https://accesodigital.iados.mx
+      - BACKEND_PUBLIC_URL=https://accesodigitalapi.iados.mx
       - FIREBASE_SERVICE_ACCOUNT_JSON=${FIREBASE_SERVICE_ACCOUNT_JSON}
     volumes:
       - ./uploads:/app/uploads
