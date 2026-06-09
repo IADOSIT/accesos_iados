@@ -48,4 +48,16 @@ export const PUT = <T = unknown>(url: string, body: unknown) => api<T>(url, { me
 export const PATCH = <T = unknown>(url: string, body: unknown) => api<T>(url, { method: 'PATCH', body });
 export const DELETE = <T = unknown>(url: string) => api<T>(url, { method: 'DELETE' });
 
+export async function POSTFORM<T = unknown>(url: string, body: FormData): Promise<T> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const tenantId = typeof window !== 'undefined' ? localStorage.getItem('tenantId') : null;
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  if (tenantId) headers['x-tenant-id'] = tenantId;
+  const res = await fetch(`${API_URL}${url}`, { method: 'POST', headers, body });
+  const data = await res.json();
+  if (!res.ok) throw new Error((data as any).message || 'Error en la solicitud');
+  return data as T;
+}
+
 export default api;

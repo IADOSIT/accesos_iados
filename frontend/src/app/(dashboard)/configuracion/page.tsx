@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '@/stores/auth';
-import { authApi, configApi, tenantsApi, devicesApi, serviceQrApi, saasApi } from '@/services/api';
+import { authApi, configApi, tenantsApi, devicesApi, serviceQrApi, saasApi, guiaAmarillaApi, advertisingApi } from '@/services/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -54,9 +54,40 @@ const EMPTY_CHARGE: AdditionalCharge = {
 interface EmergencyNumber {
   instance: string;
   number: string;
+  isActive: boolean;
+  order: number;
 }
 
-const EMPTY_EMERGENCY: EmergencyNumber = { instance: '', number: '' };
+const EMPTY_EMERGENCY: EmergencyNumber = { instance: '', number: '', isActive: true, order: 0 };
+
+// ── Tipos Guía Amarilla ─────────────────────────────────────────
+interface GuiaAmarillaEntry {
+  id?: string;
+  name: string;
+  category: string;
+  phone: string;
+  description?: string;
+  emoji: string;
+  isActive: boolean;
+  order: number;
+}
+
+const EMPTY_GUIA: GuiaAmarillaEntry = { name: '', category: '', phone: '', description: '', emoji: '📞', isActive: true, order: 0 };
+
+// ── Tipos Publicidad ────────────────────────────────────────────
+interface Advertisement {
+  id?: string;
+  businessName: string;
+  phone?: string;
+  address?: string;
+  website?: string;
+  description?: string;
+  imageUrl?: string;
+  isActive: boolean;
+  order: number;
+}
+
+const EMPTY_AD: Advertisement = { businessName: '', phone: '', address: '', website: '', description: '', imageUrl: '', isActive: true, order: 0 };
 
 // ── Tipos QR Servicios ─────────────────────────────────────────
 interface ServiceQrConfig {
@@ -191,7 +222,7 @@ const STATUS_BADGE: Record<IntegrationStatus, { label: string; cls: string }> = 
 };
 
 // ── Tabs ────────────────────────────────────────────────────────
-type ConfigTab = 'cuenta' | 'fraccionamiento' | 'cobros' | 'emergencias' | 'servicios' | 'integraciones' | 'mantenimiento';
+type ConfigTab = 'cuenta' | 'fraccionamiento' | 'cobros' | 'emergencias' | 'servicios' | 'guia-amarilla' | 'publicidad' | 'integraciones' | 'mantenimiento';
 
 const TABS: { key: ConfigTab; label: string; superAdminOnly?: boolean }[] = [
   { key: 'cuenta',          label: 'Cuenta' },
@@ -199,6 +230,8 @@ const TABS: { key: ConfigTab; label: string; superAdminOnly?: boolean }[] = [
   { key: 'cobros',          label: 'Cobros' },
   { key: 'emergencias',     label: 'Emergencias' },
   { key: 'servicios',       label: 'Servicios QR' },
+  { key: 'guia-amarilla',   label: 'Guía Amarilla' },
+  { key: 'publicidad',      label: 'Publicidad' },
   { key: 'integraciones',   label: 'Integraciones' },
   { key: 'mantenimiento',   label: '🔧 Mantenimiento', superAdminOnly: true },
 ];
@@ -955,6 +988,25 @@ export default function ConfiguracionPage() {
   const [emergencyErr, setEmergencyErr] = useState('');
   const [savingEmergency, setSavingEmergency] = useState(false);
 
+  // ── Guía Amarilla ──
+  const [guiaEntries, setGuiaEntries] = useState<GuiaAmarillaEntry[]>([]);
+  const [guiaForm, setGuiaForm] = useState<GuiaAmarillaEntry>({ ...EMPTY_GUIA });
+  const [editingGuiaId, setEditingGuiaId] = useState<string | null>(null);
+  const [guiaMsg, setGuiaMsg] = useState('');
+  const [guiaErr, setGuiaErr] = useState('');
+  const [savingGuia, setSavingGuia] = useState(false);
+  const [guiaLoaded, setGuiaLoaded] = useState(false);
+
+  // ── Publicidad ──
+  const [adEntries, setAdEntries] = useState<Advertisement[]>([]);
+  const [adForm, setAdForm] = useState<Advertisement>({ ...EMPTY_AD });
+  const [editingAdId, setEditingAdId] = useState<string | null>(null);
+  const [adMsg, setAdMsg] = useState('');
+  const [adErr, setAdErr] = useState('');
+  const [savingAd, setSavingAd] = useState(false);
+  const [adLoaded, setAdLoaded] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
   // ── Service QR ──
   const [svcQrCfg, setSvcQrCfg] = useState<ServiceQrConfig>({ ...DEFAULT_SVC_QR });
   const [svcQrMsg, setSvcQrMsg] = useState('');
@@ -1003,6 +1055,24 @@ export default function ConfiguracionPage() {
       setDevices((res.data || []).filter((d: any) => d.isActive));
     }).catch(() => {});
   }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Cargar Guía Amarilla cuando se entra al tab ──
+  useEffect(() => {
+    if (tab !== 'guia-amarilla' || !tenantId || !canManage || guiaLoaded) return;
+    guiaAmarillaApi.list().then((res: any) => {
+      setGuiaEntries(res.data || []);
+      setGuiaLoaded(true);
+    }).catch(() => {});
+  }, [tab, tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Cargar Publicidad cuando se entra al tab ──
+  useEffect(() => {
+    if (tab !== 'publicidad' || !tenantId || !canManage || adLoaded) return;
+    advertisingApi.list().then((res: any) => {
+      setAdEntries(res.data || []);
+      setAdLoaded(true);
+    }).catch(() => {});
+  }, [tab, tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Cargar billing status cuando se entra al tab de cobros ──
   useEffect(() => {
@@ -1196,13 +1266,104 @@ export default function ConfiguracionPage() {
     }
   };
 
-  function addEmergencyNumber() { setEmergencyNums((n) => [...n, { ...EMPTY_EMERGENCY }]); }
-  function updateEmergencyNumber(idx: number, field: keyof EmergencyNumber, value: string) {
+  function addEmergencyNumber() {
+    setEmergencyNums((n) => [...n, { instance: '', number: '', isActive: true, order: n.length }]);
+  }
+  function updateEmergencyNumber(idx: number, field: keyof EmergencyNumber, value: string | boolean | number) {
     setEmergencyNums((n) => { const arr = [...n]; arr[idx] = { ...arr[idx], [field]: value }; return arr; });
   }
   function removeEmergencyNumber(idx: number) {
-    setEmergencyNums((n) => n.filter((_, i) => i !== idx));
+    setEmergencyNums((n) => n.filter((_, i) => i !== idx).map((e, i) => ({ ...e, order: i })));
   }
+  function moveEmergency(idx: number, dir: -1 | 1) {
+    setEmergencyNums((n) => {
+      const arr = [...n];
+      const target = idx + dir;
+      if (target < 0 || target >= arr.length) return arr;
+      [arr[idx], arr[target]] = [arr[target], arr[idx]];
+      return arr.map((e, i) => ({ ...e, order: i }));
+    });
+  }
+
+  // ── Handlers Guía Amarilla ──
+  function resetGuiaForm() { setGuiaForm({ ...EMPTY_GUIA }); setEditingGuiaId(null); }
+  function startEditGuia(entry: GuiaAmarillaEntry) { setGuiaForm({ ...entry }); setEditingGuiaId(entry.id!); }
+
+  const handleSaveGuia = async () => {
+    setSavingGuia(true); setGuiaMsg(''); setGuiaErr('');
+    try {
+      if (editingGuiaId) {
+        const res: any = await guiaAmarillaApi.update(editingGuiaId, guiaForm);
+        setGuiaEntries((e) => e.map((x) => x.id === editingGuiaId ? res.data : x));
+      } else {
+        const res: any = await guiaAmarillaApi.create({ ...guiaForm, order: guiaEntries.length });
+        setGuiaEntries((e) => [...e, res.data]);
+      }
+      setGuiaMsg(editingGuiaId ? 'Entrada actualizada' : 'Entrada creada');
+      resetGuiaForm();
+      setTimeout(() => setGuiaMsg(''), 3000);
+    } catch (err) {
+      setGuiaErr(err instanceof Error ? err.message : 'Error al guardar');
+    } finally { setSavingGuia(false); }
+  };
+
+  const handleDeleteGuia = async (id: string) => {
+    if (!confirm('¿Eliminar esta entrada?')) return;
+    await guiaAmarillaApi.remove(id).catch(() => {});
+    setGuiaEntries((e) => e.filter((x) => x.id !== id));
+  };
+
+  const handleToggleGuia = async (entry: GuiaAmarillaEntry) => {
+    const updated = { ...entry, isActive: !entry.isActive };
+    await guiaAmarillaApi.update(entry.id!, updated).catch(() => {});
+    setGuiaEntries((e) => e.map((x) => x.id === entry.id ? updated : x));
+  };
+
+  // ── Handlers Publicidad ──
+  function resetAdForm() { setAdForm({ ...EMPTY_AD }); setEditingAdId(null); }
+  function startEditAd(entry: Advertisement) { setAdForm({ ...entry }); setEditingAdId(entry.id!); }
+
+  const handleSaveAd = async () => {
+    setSavingAd(true); setAdMsg(''); setAdErr('');
+    try {
+      if (editingAdId) {
+        const res: any = await advertisingApi.update(editingAdId, adForm);
+        setAdEntries((e) => e.map((x) => x.id === editingAdId ? res.data : x));
+      } else {
+        const res: any = await advertisingApi.create({ ...adForm, order: adEntries.length });
+        setAdEntries((e) => [...e, res.data]);
+      }
+      setAdMsg(editingAdId ? 'Anuncio actualizado' : 'Anuncio creado');
+      resetAdForm();
+      setTimeout(() => setAdMsg(''), 3000);
+    } catch (err) {
+      setAdErr(err instanceof Error ? err.message : 'Error al guardar');
+    } finally { setSavingAd(false); }
+  };
+
+  const handleDeleteAd = async (id: string) => {
+    if (!confirm('¿Eliminar este anuncio?')) return;
+    await advertisingApi.remove(id).catch(() => {});
+    setAdEntries((e) => e.filter((x) => x.id !== id));
+  };
+
+  const handleToggleAd = async (entry: Advertisement) => {
+    const updated = { ...entry, isActive: !entry.isActive };
+    await advertisingApi.update(entry.id!, updated).catch(() => {});
+    setAdEntries((e) => e.map((x) => x.id === entry.id ? updated : x));
+  };
+
+  const handleUploadAdImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const res: any = await advertisingApi.uploadImage(file);
+      setAdForm((f) => ({ ...f, imageUrl: res.data?.imageUrl || res.imageUrl || '' }));
+    } catch (err) {
+      setAdErr(err instanceof Error ? err.message : 'Error al subir imagen');
+    } finally { setUploadingImage(false); }
+  };
 
   // ── Handlers Service QR ──
   const handleSaveSvcQr = async () => {
@@ -1990,26 +2151,45 @@ export default function ConfiguracionPage() {
           {emergencyMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{emergencyMsg}</div>}
           {emergencyErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{emergencyErr}</div>}
 
-          <div className="space-y-3">
+          <div className="space-y-2">
             {emergencyNums.map((en, idx) => (
-              <div key={idx} className="flex gap-3 items-center">
+              <div key={idx} className={`flex gap-2 items-center p-2 rounded-xl border transition-colors ${en.isActive ? 'border-slate-200 bg-white/60' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
+                {/* Ordenar */}
+                <div className="flex flex-col gap-0.5 shrink-0">
+                  <button onClick={() => moveEmergency(idx, -1)} disabled={idx === 0}
+                    className="w-6 h-5 text-xs text-slate-400 hover:text-slate-600 disabled:opacity-30 flex items-center justify-center rounded hover:bg-slate-100">
+                    ▲
+                  </button>
+                  <button onClick={() => moveEmergency(idx, 1)} disabled={idx === emergencyNums.length - 1}
+                    className="w-6 h-5 text-xs text-slate-400 hover:text-slate-600 disabled:opacity-30 flex items-center justify-center rounded hover:bg-slate-100">
+                    ▼
+                  </button>
+                </div>
                 <input
                   type="text"
-                  className="input-field flex-1"
+                  className="input-field flex-1 min-w-0"
                   placeholder="ej. Bomberos"
                   value={en.instance}
                   onChange={(e) => updateEmergencyNumber(idx, 'instance', e.target.value)}
                 />
                 <input
                   type="text"
-                  className="input-field w-40"
+                  className="input-field w-36 shrink-0"
                   placeholder="ej. 911"
                   value={en.number}
                   onChange={(e) => updateEmergencyNumber(idx, 'number', e.target.value)}
                 />
+                {/* Toggle activo */}
+                <button
+                  onClick={() => updateEmergencyNumber(idx, 'isActive', !en.isActive)}
+                  title={en.isActive ? 'Desactivar' : 'Activar'}
+                  className={`shrink-0 w-10 h-5 rounded-full transition-colors relative ${en.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${en.isActive ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                </button>
                 <button
                   onClick={() => removeEmergencyNumber(idx)}
-                  className="text-red-400 hover:text-red-600 shrink-0 text-lg font-bold"
+                  className="text-red-400 hover:text-red-600 shrink-0 text-lg font-bold px-1"
                 >
                   ✕
                 </button>
@@ -2275,6 +2455,193 @@ export default function ConfiguracionPage() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════
+          TAB: GUÍA AMARILLA
+         ══════════════════════════════════ */}
+      {tab === 'guia-amarilla' && canManage && (
+        <div className="space-y-6">
+          {/* Formulario */}
+          <div className="glass-card">
+            <h3 className="font-semibold text-slate-700 mb-4">
+              {editingGuiaId ? 'Editar entrada' : 'Nueva entrada'}
+            </h3>
+            {guiaMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{guiaMsg}</div>}
+            {guiaErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{guiaErr}</div>}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex gap-2">
+                <input type="text" className="input-field w-16 text-center text-xl" placeholder="📞"
+                  value={guiaForm.emoji} maxLength={2}
+                  onChange={(e) => setGuiaForm((f) => ({ ...f, emoji: e.target.value }))} />
+                <input type="text" className="input-field flex-1" placeholder="Nombre del negocio / servicio"
+                  value={guiaForm.name}
+                  onChange={(e) => setGuiaForm((f) => ({ ...f, name: e.target.value }))} />
+              </div>
+              <input type="text" className="input-field" placeholder="Categoría (ej. Fontanería, Electricidad)"
+                value={guiaForm.category}
+                onChange={(e) => setGuiaForm((f) => ({ ...f, category: e.target.value }))} />
+              <input type="text" className="input-field" placeholder="Teléfono"
+                value={guiaForm.phone}
+                onChange={(e) => setGuiaForm((f) => ({ ...f, phone: e.target.value }))} />
+              <input type="text" className="input-field" placeholder="Descripción (opcional)"
+                value={guiaForm.description || ''}
+                onChange={(e) => setGuiaForm((f) => ({ ...f, description: e.target.value }))} />
+            </div>
+            <div className="flex gap-2 mt-4 justify-end">
+              {editingGuiaId && (
+                <button onClick={resetGuiaForm} className="px-4 py-2 text-sm rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
+                  Cancelar
+                </button>
+              )}
+              <button onClick={handleSaveGuia} disabled={savingGuia || !guiaForm.name || !guiaForm.phone}
+                className="btn-primary text-sm disabled:opacity-60">
+                {savingGuia ? 'Guardando...' : (editingGuiaId ? 'Actualizar' : 'Agregar')}
+              </button>
+            </div>
+          </div>
+
+          {/* Lista */}
+          <div className="glass-card">
+            <h3 className="font-semibold text-slate-700 mb-4">Directorio ({guiaEntries.length} entradas)</h3>
+            {guiaEntries.length === 0 ? (
+              <div className="text-center py-8 text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                <p className="text-3xl mb-2">📒</p>
+                <p className="text-sm">No hay entradas. Agrega la primera arriba.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {guiaEntries.map((entry) => (
+                  <div key={entry.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${entry.isActive ? 'border-slate-200 bg-white/60' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
+                    <span className="text-2xl w-8 text-center shrink-0">{entry.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-slate-800 text-sm truncate">{entry.name}</p>
+                      <p className="text-xs text-slate-500">{entry.category} · {entry.phone}</p>
+                      {entry.description && <p className="text-xs text-slate-400 truncate">{entry.description}</p>}
+                    </div>
+                    <button onClick={() => handleToggleGuia(entry)}
+                      className={`shrink-0 w-10 h-5 rounded-full transition-colors relative ${entry.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                      <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${entry.isActive ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                    </button>
+                    <button onClick={() => startEditGuia(entry)}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors shrink-0">
+                      Editar
+                    </button>
+                    <button onClick={() => handleDeleteGuia(entry.id!)}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors shrink-0">
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════
+          TAB: PUBLICIDAD
+         ══════════════════════════════════ */}
+      {tab === 'publicidad' && canManage && (
+        <div className="space-y-6">
+          {/* Formulario */}
+          <div className="glass-card">
+            <h3 className="font-semibold text-slate-700 mb-4">
+              {editingAdId ? 'Editar anuncio' : 'Nuevo anuncio'}
+            </h3>
+            {adMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{adMsg}</div>}
+            {adErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{adErr}</div>}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input type="text" className="input-field sm:col-span-2" placeholder="Nombre del negocio *"
+                value={adForm.businessName}
+                onChange={(e) => setAdForm((f) => ({ ...f, businessName: e.target.value }))} />
+              <input type="text" className="input-field" placeholder="Teléfono"
+                value={adForm.phone || ''}
+                onChange={(e) => setAdForm((f) => ({ ...f, phone: e.target.value }))} />
+              <input type="text" className="input-field" placeholder="Dirección"
+                value={adForm.address || ''}
+                onChange={(e) => setAdForm((f) => ({ ...f, address: e.target.value }))} />
+              <input type="text" className="input-field" placeholder="Sitio web"
+                value={adForm.website || ''}
+                onChange={(e) => setAdForm((f) => ({ ...f, website: e.target.value }))} />
+              <input type="text" className="input-field" placeholder="Descripción"
+                value={adForm.description || ''}
+                onChange={(e) => setAdForm((f) => ({ ...f, description: e.target.value }))} />
+              {/* Imagen */}
+              <div className="sm:col-span-2 flex items-center gap-3">
+                <label className="flex-1 cursor-pointer">
+                  <div className="border-2 border-dashed border-slate-300 hover:border-primary-400 rounded-xl p-3 text-center transition-colors">
+                    <p className="text-xs text-slate-500">
+                      {uploadingImage ? '⏳ Subiendo imagen...' : (adForm.imageUrl ? '✅ Imagen cargada — clic para cambiar' : '📷 Clic para subir imagen del anuncio')}
+                    </p>
+                  </div>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleUploadAdImage} disabled={uploadingImage} />
+                </label>
+                {adForm.imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={`${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '')}${adForm.imageUrl}`}
+                    alt="preview" className="w-16 h-16 object-cover rounded-xl border border-slate-200" />
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4 justify-end">
+              {editingAdId && (
+                <button onClick={resetAdForm} className="px-4 py-2 text-sm rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
+                  Cancelar
+                </button>
+              )}
+              <button onClick={handleSaveAd} disabled={savingAd || !adForm.businessName}
+                className="btn-primary text-sm disabled:opacity-60">
+                {savingAd ? 'Guardando...' : (editingAdId ? 'Actualizar' : 'Crear anuncio')}
+              </button>
+            </div>
+          </div>
+
+          {/* Lista */}
+          <div className="glass-card">
+            <h3 className="font-semibold text-slate-700 mb-4">Anuncios activos ({adEntries.length})</h3>
+            {adEntries.length === 0 ? (
+              <div className="text-center py-8 text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                <p className="text-3xl mb-2">📢</p>
+                <p className="text-sm">No hay anuncios. Crea el primero arriba.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {adEntries.map((ad) => (
+                  <div key={ad.id} className={`rounded-xl border overflow-hidden transition-opacity ${ad.isActive ? 'border-slate-200' : 'border-slate-100 opacity-60'}`}>
+                    {ad.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={`${process.env.NEXT_PUBLIC_API_URL?.replace('/api', '')}${ad.imageUrl}`}
+                        alt={ad.businessName} className="w-full h-32 object-cover" />
+                    ) : (
+                      <div className="w-full h-32 bg-slate-100 flex items-center justify-center text-slate-400 text-3xl">📷</div>
+                    )}
+                    <div className="p-3 space-y-1">
+                      <p className="font-semibold text-slate-800 text-sm">{ad.businessName}</p>
+                      {ad.phone && <p className="text-xs text-slate-500">📞 {ad.phone}</p>}
+                      {ad.address && <p className="text-xs text-slate-500">📍 {ad.address}</p>}
+                      {ad.description && <p className="text-xs text-slate-400 line-clamp-2">{ad.description}</p>}
+                      <div className="flex gap-2 pt-2">
+                        <button onClick={() => handleToggleAd(ad)}
+                          className={`shrink-0 w-10 h-5 rounded-full transition-colors relative ${ad.isActive ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                          <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${ad.isActive ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                        </button>
+                        <button onClick={() => startEditAd(ad)}
+                          className="flex-1 text-xs py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors">
+                          Editar
+                        </button>
+                        <button onClick={() => handleDeleteAd(ad.id!)}
+                          className="text-xs px-2 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors">
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

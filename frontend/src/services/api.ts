@@ -1,4 +1,4 @@
-import { GET, POST, PUT, PATCH, DELETE } from '@/lib/api';
+import { GET, POST, PUT, PATCH, DELETE, POSTFORM } from '@/lib/api';
 
 // ============ AUTH ============
 export const authApi = {
@@ -118,6 +118,28 @@ export const saasApi = {
   updateConfig: (data: unknown) => PUT('/saas/config', data),
   createPreference: () => POST('/saas/preference', {}),
   verify: (saasPaymentId: string) => POST('/saas/verify', { saasPaymentId }),
+};
+
+// ============ GUIA AMARILLA ============
+export const guiaAmarillaApi = {
+  list: () => GET('/guia-amarilla'),
+  create: (data: unknown) => POST('/guia-amarilla', data),
+  update: (id: string, data: unknown) => PUT(`/guia-amarilla/${id}`, data),
+  remove: (id: string) => DELETE(`/guia-amarilla/${id}`),
+  reorder: (ids: string[]) => PATCH('/guia-amarilla/reorder', { ids }),
+};
+
+// ============ PUBLICIDAD ============
+export const advertisingApi = {
+  list: () => GET('/advertising'),
+  create: (data: unknown) => POST('/advertising', data),
+  update: (id: string, data: unknown) => PUT(`/advertising/${id}`, data),
+  remove: (id: string) => DELETE(`/advertising/${id}`),
+  uploadImage: (file: File) => {
+    const form = new FormData();
+    form.append('image', file);
+    return POSTFORM('/advertising/upload-image', form);
+  },
 };
 
 // ============ REPORTES ============

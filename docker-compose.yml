@@ -20,6 +20,8 @@ services:
       - ACCESS_COOLDOWN_SECONDS=30
       - PORTAL_URL=https://accesodigital.iados.mx
       - FIREBASE_SERVICE_ACCOUNT_JSON=${FIREBASE_SERVICE_ACCOUNT_JSON}
+    volumes:
+      - ./uploads:/app/uploads
     restart: always
     extra_hosts:
       - "host.docker.internal:host-gateway"
