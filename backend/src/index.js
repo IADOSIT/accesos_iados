@@ -68,9 +68,9 @@ const authLimiter = rateLimit({
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('combined'));
 
-// Servir archivos de uploads estáticos
+// Servir archivos de uploads estáticos (bajo /api/ para que NPM los proxee)
 const path = require('path');
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/api/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Health check
 app.get('/api/health', (req, res) => {
