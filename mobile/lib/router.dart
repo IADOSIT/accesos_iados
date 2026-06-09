@@ -113,7 +113,7 @@ class _MainShell extends ConsumerStatefulWidget {
   ConsumerState<_MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends ConsumerState<_MainShell> {
+class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObserver {
   int _currentIndex = 0;
 
   // Tabs por defecto — se usan cuando el tenant no tiene dashboardConfig configurado
@@ -160,6 +160,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (!kIsWeb) {
       // Escuchar taps de notificación local (background → fullScreenIntent tappeado)
       localNotifTapController.stream.listen((data) {
@@ -296,6 +297,19 @@ class _MainShellState extends ConsumerState<_MainShell> {
         emergencyContacts: config?.emergencyContacts ?? [],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.invalidate(tenantConfigProvider);
+    }
   }
 
   @override
