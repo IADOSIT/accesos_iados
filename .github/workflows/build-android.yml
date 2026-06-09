@@ -1,0 +1,56 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Instalar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Instalar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Leer versión del proyecto
+        id: version
+        run: echo "version=$(cat ../VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      - name: Build APK release
+        run: |
+          flutter build apk --release \
+            --dart-define=API_URL=https://accesodigitalapi.iados.mx/api \
+            --dart-define=PORTAL_URL=https://accesodigital.iados.mx
+
+      - name: Renombrar APK con versión
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             build/app/outputs/flutter-apk/AccesoDigital-${VERSION}.apk
+
+      - name: Subir APK como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AccesoDigital-${{ steps.version.outputs.version }}
+          path: mobile/build/app/outputs/flutter-apk/AccesoDigital-*.apk
+          retention-days: 30
