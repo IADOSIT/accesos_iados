@@ -47,3 +47,17 @@ final unreadCountProvider = FutureProvider.autoDispose<int>((ref) async {
   final res = await api.get('/notifications/unread-count');
   return res.data['data']['count'] as int;
 });
+
+final recentNotificationsProvider = FutureProvider<List<NotificationItem>>((ref) async {
+  final api = ref.watch(apiClientProvider);
+  try {
+    final res = await api.get('/notifications');
+    final list = res.data['data'] as List? ?? [];
+    return list
+        .take(10)
+        .map((n) => NotificationItem.fromJson(n as Map<String, dynamic>))
+        .toList();
+  } catch (_) {
+    return [];
+  }
+});

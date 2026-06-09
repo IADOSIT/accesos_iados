@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,6 +18,8 @@ import '../../../shared/widgets/stat_card.dart';
 import '../../../shared/widgets/iados_logo.dart';
 import '../../../shared/widgets/panic_alert_dialog.dart';
 import '../../../shared/widgets/update_banner.dart';
+import '../../../shared/widgets/notification_detail_sheet.dart';
+import '../../../features/notifications/providers/notifications_provider.dart';
 
 final dashboardStatsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final api = ref.watch(apiClientProvider);
@@ -35,17 +37,6 @@ final recentAccessProvider = FutureProvider<List<dynamic>>((ref) async {
   return res.data['data'] as List? ?? [];
 });
 
-final recentServiceRequestsProvider = FutureProvider<List<dynamic>>((ref) async {
-  final auth = ref.watch(authProvider);
-  if (auth.tenantId == null) return [];
-  final api = ref.watch(apiClientProvider);
-  try {
-    final res = await api.get('/service-qr/requests', params: {'limit': '5'});
-    return res.data['data'] as List? ?? [];
-  } catch (_) {
-    return [];
-  }
-});
 
 final advertisingProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
   final auth = ref.watch(authProvider);
@@ -66,10 +57,7 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authProvider);
     final stats = ref.watch(dashboardStatsProvider);
-    final recentAccess = ref.watch(recentAccessProvider);
-
     final tenantConfigAsync = ref.watch(tenantConfigProvider);
-    final recentServiceRequests = ref.watch(recentServiceRequestsProvider);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -222,13 +210,13 @@ class DashboardScreen extends ConsumerWidget {
                     child: _AdvertisingCarousel(),
                   ),
 
-                // Actividad reciente (todos los roles)
+                // Actividad reciente — últimas notificaciones
                 FadeInUp(
                   delay: const Duration(milliseconds: 400),
                   child: Row(
                     children: [
                       Text(
-                        auth.isResident ? 'Mis accesos recientes' : AppStrings.recentActivity,
+                        AppStrings.recentActivity,
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -236,43 +224,22 @@ class DashboardScreen extends ConsumerWidget {
                         ),
                       ),
                       const Spacer(),
-                      if (auth.isAdmin || auth.isGuard)
-                        TextButton(
-                          onPressed: () => context.go('/access'),
-                          child: const Text('Ver todo'),
-                        ),
+                      TextButton(
+                        onPressed: () => context.go('/notifications'),
+                        child: const Text('Ver todo'),
+                      ),
                     ],
                   ),
                 ),
 
                 const SizedBox(height: 8),
 
-                Builder(builder: (context) {
-                  if (recentAccess.isLoading || recentServiceRequests.isLoading) {
-                    return _AccessLogSkeleton();
-                  }
-                  if (recentAccess.hasError) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(recentAccess.error.toString(),
-                          style: TextStyle(color: context.colors.error, fontSize: 13)),
-                    );
-                  }
+                Consumer(builder: (context, ref, _) {
+                  final notifAsync = ref.watch(recentNotificationsProvider);
+                  if (notifAsync.isLoading) return _AccessLogSkeleton();
 
-                  final logs = recentAccess.valueOrNull ?? [];
-                  final svcReqs = recentServiceRequests.valueOrNull ?? [];
-
-                  // Normalizar y combinar
-                  final combined = [
-                    ...logs.map((l) => _ActivityItem(type: 'access', data: l,
-                        date: DateTime.tryParse(l['createdAt'] as String? ?? '') ?? DateTime(0))),
-                    ...svcReqs.map((s) => _ActivityItem(type: 'service', data: s,
-                        date: DateTime.tryParse(s['createdAt'] as String? ?? '') ?? DateTime(0))),
-                  ]..sort((a, b) => b.date.compareTo(a.date));
-
-                  final items = combined.take(10).toList();
-
-                  if (items.isEmpty) {
+                  final notifications = notifAsync.valueOrNull ?? [];
+                  if (notifications.isEmpty) {
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       child: Center(
@@ -283,9 +250,9 @@ class DashboardScreen extends ConsumerWidget {
                   }
 
                   return Column(
-                    children: items.map((item) => item.type == 'service'
-                        ? _ServiceRequestLogItem(data: item.data)
-                        : _AccessLogItem(log: item.data)).toList(),
+                    children: notifications
+                        .map((n) => _RecentNotifItem(item: n))
+                        .toList(),
                   );
                 }),
 
@@ -731,7 +698,10 @@ class _AccessButtonsState extends ConsumerState<_AccessButtons> {
             backgroundColor: granted ? context.colors.success : context.colors.error,
           ),
         );
-        if (granted) ref.invalidate(recentAccessProvider);
+        if (granted) {
+          ref.invalidate(recentAccessProvider);
+          ref.invalidate(recentNotificationsProvider);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -901,313 +871,127 @@ class _AccessLogSkeleton extends StatelessWidget {
   }
 }
 
-class _AccessLogItem extends StatelessWidget {
-  final dynamic log;
-  const _AccessLogItem({required this.log});
+// ── Notificación reciente en el dashboard ─────────────────────────────────
+class _RecentNotifItem extends ConsumerWidget {
+  final NotificationItem item;
+  const _RecentNotifItem({required this.item});
 
-  // Categorías de QR rápido
-  static const _quickCategories = {'Uber/Didi', 'Delivery', 'Servicio'};
-
-  String _title() {
-    final method = log['method'] as String? ?? '';
-    final direction = log['direction'] as String? ?? 'ENTRY';
-    final visitorName = log['visitorName'] as String? ?? '';
-    final dir = direction == 'EXIT' ? 'Salida' : 'Entrada';
-
-    switch (method) {
-      case 'APP':
-        return '$dir — Residente (App)';
-      case 'QR':
-        if (_quickCategories.contains(visitorName)) {
-          return 'QR Rápido — $visitorName';
-        }
-        return visitorName.isNotEmpty ? 'QR Visita — $visitorName' : 'Código QR';
-      case 'GUARD_OVERRIDE':
-        return visitorName.isNotEmpty ? 'Acceso manual — $visitorName' : 'Acceso manual (Guardia)';
-      case 'REMOTE':
-        return '$dir — Acceso remoto';
-      case 'EXIT_SENSOR':
-        return 'Salida — Sensor automático';
-      default:
-        return method;
-    }
-  }
-
-  String _subtitle() {
-    final parts = <String>[];
-
-    final unit = log['unit'] as Map?;
-    final identifier = unit?['identifier'] as String?;
-    if (identifier != null && identifier.isNotEmpty) parts.add('Unidad $identifier');
-
-    final plate = log['visitorPlate'] as String?;
-    if (plate != null && plate.isNotEmpty) parts.add('Placa: $plate');
-
-    final device = log['device'] as Map?;
-    final deviceName = device?['name'] as String?;
-    if (deviceName != null && deviceName.isNotEmpty) parts.add(deviceName);
-
-    final user = log['user'] as Map?;
-    final firstName = user?['firstName'] as String?;
-    final lastName  = user?['lastName']  as String?;
-    if (firstName != null) {
-      final method = log['method'] as String? ?? '';
-      if (method == 'GUARD_OVERRIDE') parts.add('Guardia: $firstName ${lastName ?? ''}');
-    }
-
-    return parts.join(' · ');
-  }
-
-  IconData _icon() {
-    final method = log['method'] as String? ?? '';
-    final visitorName = log['visitorName'] as String? ?? '';
-    switch (method) {
-      case 'APP':           return Icons.smartphone_rounded;
-      case 'QR':
-        return _quickCategories.contains(visitorName)
-            ? Icons.flash_on_rounded
-            : Icons.qr_code_scanner_rounded;
-      case 'GUARD_OVERRIDE': return Icons.security_rounded;
-      case 'REMOTE':         return Icons.wifi_rounded;
-      case 'EXIT_SENSOR':    return Icons.sensor_door_rounded;
-      default:               return Icons.key_rounded;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    final granted = log['granted'] as bool? ?? false;
-    final createdAt = log['createdAt'] as String?;
-    final direction = log['direction'] as String? ?? 'ENTRY';
-
-    final statusColor = granted ? c.accessGranted : c.accessDenied;
-    final dirColor = direction == 'EXIT' ? c.warning : c.primary;
-
-    String timeStr = '';
-    String dateStr = '';
-    if (createdAt != null) {
-      try {
-        final dt = DateTime.parse(createdAt).toLocal();
-        final now = DateTime.now();
-        timeStr = DateFormat('HH:mm').format(dt);
-        if (dt.day != now.day || dt.month != now.month) {
-          dateStr = DateFormat('dd/MM').format(dt);
-        }
-      } catch (_) {}
-    }
-
-    final subtitle = _subtitle();
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: c.bgCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: c.border),
-        boxShadow: isLight
-            ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2))]
-            : null,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: dirColor.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(_icon(), color: dirColor, size: 18),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _title(),
-                  style: TextStyle(
-                    color: c.textPrimary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
-                if (subtitle.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(subtitle, style: TextStyle(color: c.textMuted, fontSize: 11)),
-                ],
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    granted ? 'Permitido' : 'Denegado',
-                    style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(timeStr, style: TextStyle(color: c.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
-              if (dateStr.isNotEmpty)
-                Text(dateStr, style: TextStyle(color: c.textMuted, fontSize: 10)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Helper para lista combinada ────────────────────────────────────────────
-class _ActivityItem {
-  final String type; // 'access' | 'service'
-  final dynamic data;
-  final DateTime date;
-  const _ActivityItem({required this.type, required this.data, required this.date});
-}
-
-// ── Item de solicitud de servicio en el log ────────────────────────────────
-class _ServiceRequestLogItem extends StatelessWidget {
-  final dynamic data;
-  const _ServiceRequestLogItem({required this.data});
-
-  static const _serviceIcons = {
-    'CFE': '⚡', 'Gas': '🔥', 'Agua': '💧', 'Basura': '🗑️',
-    'Paquetería': '📦', 'Mensajería': '📬', 'Domicilio': '🛵',
-    'Técnico': '🔧', 'Jardinería': '🌿', 'Limpieza': '🧹',
+  static const _typeIcons = <String, IconData>{
+    'ACCESS_DENIED':     Icons.block_rounded,
+    'QR_USED':           Icons.qr_code_scanner_rounded,
+    'NEW_CHARGE':        Icons.receipt_long_rounded,
+    'PAYMENT_CONFIRMED': Icons.check_circle_rounded,
+    'DEVICE_OFFLINE':    Icons.wifi_off_rounded,
+    'SERVICE_REQUEST':   Icons.manage_accounts_rounded,
+    'PANIC':             Icons.crisis_alert_rounded,
   };
 
-  Color _statusColor(String status, AppColorsScheme c) {
-    switch (status) {
-      case 'APPROVED': return c.success;
-      case 'REJECTED': return c.error;
-      case 'EXPIRED':  return c.textMuted;
-      default:         return c.warning; // PENDING
-    }
-  }
-
-  String _statusLabel(String status) {
-    switch (status) {
-      case 'APPROVED': return 'Aprobado';
-      case 'REJECTED': return 'Rechazado';
-      case 'EXPIRED':  return 'Expirado';
-      default:         return 'Pendiente';
+  Color _iconColor(String type, AppColorsScheme c) {
+    switch (type) {
+      case 'ACCESS_DENIED':     return c.error;
+      case 'QR_USED':           return c.primary;
+      case 'NEW_CHARGE':        return c.warning;
+      case 'PAYMENT_CONFIRMED': return c.success;
+      case 'DEVICE_OFFLINE':    return c.textSecondary;
+      case 'PANIC':             return c.error;
+      default:                  return c.info;
     }
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final isLight = Theme.of(context).brightness == Brightness.light;
-    final service         = data['service']         as String? ?? 'Servicio';
-    final status          = data['status']          as String? ?? 'PENDING';
-    final phone           = data['visitorPhone']    as String? ?? '';
-    final createdAt       = data['createdAt']       as String?;
-    final unit            = data['unit']            as Map?;
-    final identifier      = unit?['identifier']     as String?;
-    final destinationType = data['destinationType'] as String? ?? 'UNIT';
-
-    final emoji = _serviceIcons[service] ?? '🔔';
-    final statusColor = _statusColor(status, c);
+    final iconColor = _iconColor(item.type, c);
+    final icon = _typeIcons[item.type] ?? Icons.notifications_rounded;
 
     String timeStr = '';
     String dateStr = '';
-    if (createdAt != null) {
-      try {
-        final dt = DateTime.parse(createdAt).toLocal();
-        final now = DateTime.now();
-        timeStr = DateFormat('HH:mm').format(dt);
-        if (dt.day != now.day || dt.month != now.month) {
-          dateStr = DateFormat('dd/MM').format(dt);
-        }
-      } catch (_) {}
-    }
+    try {
+      final dt = item.createdAt.toLocal();
+      final now = DateTime.now();
+      timeStr = DateFormat('HH:mm').format(dt);
+      if (dt.day != now.day || dt.month != now.month) {
+        dateStr = DateFormat('dd/MM').format(dt);
+      }
+    } catch (_) {}
 
-    final destLabel = identifier != null
-        ? 'Unidad $identifier'
-        : destinationType == 'COMMITTEE'
-            ? 'Comité'
-            : destinationType == 'GUARD'
-                ? 'Guardia'
-                : '';
-
-    final subtitle = [
-      if (destLabel.isNotEmpty) destLabel,
-      if (phone.isNotEmpty) phone,
-    ].join(' · ');
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: c.bgCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: c.border),
-        boxShadow: isLight
-            ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2))]
-            : null,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 36, height: 36,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: c.info.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(emoji, style: const TextStyle(fontSize: 18)),
+    return GestureDetector(
+      onTap: () => showNotificationDetail(context, ref, item),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: item.isUnread
+              ? c.primary.withOpacity(0.05)
+              : c.bgCard,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: item.isUnread ? c.primary.withOpacity(0.25) : c.border,
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Servicio externo — $service',
-                    style: TextStyle(color: c.textPrimary, fontWeight: FontWeight.w600, fontSize: 13)),
-                if (subtitle.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(subtitle, style: TextStyle(color: c.textMuted, fontSize: 11)),
-                ],
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
+          boxShadow: isLight
+              ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2))]
+              : null,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: iconColor, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.title,
+                    style: TextStyle(
+                      color: c.textPrimary,
+                      fontWeight: item.isUnread ? FontWeight.w700 : FontWeight.w500,
+                      fontSize: 13,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  child: Text(_statusLabel(status),
-                      style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w600)),
-                ),
+                  const SizedBox(height: 3),
+                  Text(
+                    item.body,
+                    style: TextStyle(color: c.textSecondary, fontSize: 12),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(timeStr, style: TextStyle(color: c.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
+                if (dateStr.isNotEmpty)
+                  Text(dateStr, style: TextStyle(color: c.textMuted, fontSize: 10)),
+                if (item.isUnread) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    width: 7, height: 7,
+                    decoration: BoxDecoration(color: c.primary, shape: BoxShape.circle),
+                  ),
+                ],
               ],
             ),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(timeStr, style: TextStyle(color: c.textMuted, fontSize: 12, fontWeight: FontWeight.w500)),
-              if (dateStr.isNotEmpty)
-                Text(dateStr, style: TextStyle(color: c.textMuted, fontSize: 10)),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
+
 
 // ── Botón de pánico ────────────────────────────────────────────────────────
 class _PanicButton extends ConsumerStatefulWidget {
