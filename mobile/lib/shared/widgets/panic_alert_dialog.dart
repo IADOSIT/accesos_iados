@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/tenant_config_provider.dart';
 
 class PanicAlertFullScreen extends StatelessWidget {
@@ -80,7 +81,7 @@ class PanicAlertFullScreen extends StatelessWidget {
 
                       PanicRow(label: 'Nombre',    value: name.isNotEmpty ? name : 'N/A'),
                       PanicRow(label: 'Familia',   value: unit.isNotEmpty ? unit : 'N/A'),
-                      PanicRow(label: 'Teléfono',  value: phone.isNotEmpty ? phone : 'N/A', copyable: true),
+                      PanicRow(label: 'Teléfono',  value: phone.isNotEmpty ? phone : 'N/A', copyable: true, callable: true),
                       PanicRow(label: 'Dirección', value: address.isNotEmpty ? address : 'N/A'),
 
                       const SizedBox(height: 12),
@@ -100,8 +101,7 @@ class PanicAlertFullScreen extends StatelessWidget {
                               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black54)),
                         ),
                         const SizedBox(height: 6),
-                        ...emergencyContacts.map((ec) =>
-                            PanicRow(label: ec.instance, value: ec.number, copyable: true)),
+                        ...emergencyContacts.map((ec) => _EmergencyCallRow(contact: ec)),
                       ],
 
                       const SizedBox(height: 16),
@@ -117,11 +117,66 @@ class PanicAlertFullScreen extends StatelessWidget {
   }
 }
 
+// ── Fila de número de emergencia con botón de llamada ────────────────────
+
+class _EmergencyCallRow extends StatelessWidget {
+  final EmergencyContact contact;
+  const _EmergencyCallRow({required this.contact});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(contact.instance,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Colors.black87)),
+                Text(contact.number,
+                    style: const TextStyle(fontSize: 13, color: Colors.black54)),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () => _call(context, contact.number),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.green.shade600,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.phone_rounded, color: Colors.white, size: 20),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _call(BuildContext context, String number) async {
+    final clean = number.replaceAll(RegExp(r'[^\d+]'), '');
+    final uri = Uri.parse('tel:$clean');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo abrir el marcador para $number')),
+      );
+    }
+  }
+}
+
+// ── PanicRow estándar ────────────────────────────────────────────────────
+
 class PanicRow extends StatelessWidget {
   final String label;
   final String value;
   final bool copyable;
-  const PanicRow({super.key, required this.label, required this.value, this.copyable = false});
+  final bool callable;
+  const PanicRow({super.key, required this.label, required this.value, this.copyable = false, this.callable = false});
 
   @override
   Widget build(BuildContext context) {
@@ -137,7 +192,19 @@ class PanicRow extends StatelessWidget {
           Expanded(
             child: Text(value, style: const TextStyle(fontSize: 13, color: Colors.black87)),
           ),
-          if (copyable && value != 'N/A')
+          if (callable && value != 'N/A')
+            GestureDetector(
+              onTap: () async {
+                final clean = value.replaceAll(RegExp(r'[^\d+]'), '');
+                final uri = Uri.parse('tel:$clean');
+                if (await canLaunchUrl(uri)) await launchUrl(uri);
+              },
+              child: const Padding(
+                padding: EdgeInsets.only(left: 8),
+                child: Icon(Icons.phone_rounded, size: 16, color: Colors.green),
+              ),
+            )
+          else if (copyable && value != 'N/A')
             GestureDetector(
               onTap: () {
                 Clipboard.setData(ClipboardData(text: value));
