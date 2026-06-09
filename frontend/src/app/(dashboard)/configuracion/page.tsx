@@ -122,6 +122,7 @@ const DEFAULT_SVC_QR: ServiceQrConfig = {
 
 // ── Tipos feature flags ────────────────────────────────────────
 interface FeatureFlags {
+  enableAccessControl: boolean;
   showResidentAccessButton: boolean;
   showVisitorAccessButton: boolean;
   showExitButton: boolean;
@@ -135,6 +136,7 @@ interface FeatureFlags {
 }
 
 const DEFAULT_FLAGS: FeatureFlags = {
+  enableAccessControl: true,
   showResidentAccessButton: false,
   showVisitorAccessButton: false,
   showExitButton: false,
@@ -246,6 +248,20 @@ const DEFAULT_DASHBOARDS: DashboardItem[] = [
   { key: 'pagos',          label: 'Pagos',       icon: 'receipt',      activo: true,  orden: 3 },
   { key: 'notificaciones', label: 'Alertas',     icon: 'notification', activo: true,  orden: 4 },
   { key: 'guia_amarilla',  label: 'Directorio',  icon: 'book',         activo: false, orden: 5 },
+];
+
+const HOME_SECTION_META: Record<string, { emoji: string; description: string }> = {
+  pagos:              { emoji: '💳', description: 'Acceso rápido a cargos y formas de pago' },
+  guia_amarilla:      { emoji: '📒', description: 'Directorio de servicios (requiere módulo activo)' },
+  publicidad:         { emoji: '📢', description: 'Carrusel de anuncios (requiere módulo activo)' },
+  actividad_reciente: { emoji: '🔔', description: 'Últimas notificaciones y alertas' },
+};
+
+const DEFAULT_HOME_SECTIONS: DashboardItem[] = [
+  { key: 'pagos',              label: 'Pagos',              icon: 'receipt',       activo: true,  orden: 0 },
+  { key: 'guia_amarilla',      label: 'Directorio',         icon: 'book',          activo: true,  orden: 1 },
+  { key: 'publicidad',         label: 'Anuncios',           icon: 'campaign',      activo: true,  orden: 2 },
+  { key: 'actividad_reciente', label: 'Actividad Reciente', icon: 'notifications', activo: true,  orden: 3 },
 ];
 
 // ── Tabs ────────────────────────────────────────────────────────
@@ -1055,11 +1071,17 @@ export default function ConfiguracionPage() {
   // ── Dispositivos (para selectors) ──
   const [devices, setDevices] = useState<{ id: string; name: string; status: string }[]>([]);
 
-  // ── Dashboards config ──
+  // ── Dashboards config (tabs nav) ──
   const [dashboardItems, setDashboardItems] = useState<DashboardItem[]>([...DEFAULT_DASHBOARDS]);
   const [dashboardMsg, setDashboardMsg] = useState('');
   const [dashboardErr, setDashboardErr] = useState('');
   const [savingDashboards, setSavingDashboards] = useState(false);
+
+  // ── Secciones del home ──
+  const [homeItems, setHomeItems] = useState<DashboardItem[]>([...DEFAULT_HOME_SECTIONS]);
+  const [homeMsg, setHomeMsg] = useState('');
+  const [homeErr, setHomeErr] = useState('');
+  const [savingHome, setSavingHome] = useState(false);
 
   // ── Integraciones ──
   const [integrations, setIntegrations] = useState<Integration[]>([]);
@@ -1090,6 +1112,9 @@ export default function ConfiguracionPage() {
       if (s.serviceQrConfig) setSvcQrCfg({ ...DEFAULT_SVC_QR, ...s.serviceQrConfig });
       if (s.dashboardConfig && Array.isArray(s.dashboardConfig) && s.dashboardConfig.length > 0) {
         setDashboardItems(s.dashboardConfig);
+      }
+      if (s.dashboardsHomeConfig && Array.isArray(s.dashboardsHomeConfig) && s.dashboardsHomeConfig.length > 0) {
+        setHomeItems(s.dashboardsHomeConfig);
       }
     }).catch(() => {});
     serviceQrApi.currentQR().then((res: any) => {
@@ -1477,6 +1502,37 @@ export default function ConfiguracionPage() {
     );
   }
 
+  // ── Handlers secciones del home ──
+  const handleSaveHome = async () => {
+    setSavingHome(true); setHomeMsg(''); setHomeErr('');
+    try {
+      const payload = homeItems.map((d, i) => ({ ...d, orden: i }));
+      await configApi.updateTenant({ dashboardsHomeConfig: payload });
+      setHomeMsg('Secciones del home guardadas');
+      setTimeout(() => setHomeMsg(''), 3000);
+    } catch (err) {
+      setHomeErr(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setSavingHome(false);
+    }
+  };
+
+  function moveHome(idx: number, dir: -1 | 1) {
+    setHomeItems((items) => {
+      const arr = [...items];
+      const target = idx + dir;
+      if (target < 0 || target >= arr.length) return arr;
+      [arr[idx], arr[target]] = [arr[target], arr[idx]];
+      return arr.map((d, i) => ({ ...d, orden: i }));
+    });
+  }
+
+  function toggleHome(key: string) {
+    setHomeItems((items) =>
+      items.map((d) => d.key === key ? { ...d, activo: !d.activo } : d)
+    );
+  }
+
   // ── Handlers integraciones ──
   function openCreateModal() { setEditingInt(null); setShowIntModal(true); }
   function openEditModal(int: Integration) { setEditingInt(int); setShowIntModal(true); }
@@ -1661,7 +1717,18 @@ export default function ConfiguracionPage() {
             {flagsMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{flagsMsg}</div>}
             {flagsErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{flagsErr}</div>}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Módulo de control de accesos */}
+            <div className="mb-6 p-4 border border-slate-200 rounded-xl bg-slate-50/50">
+              <label className="flex items-center justify-between cursor-pointer">
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">Habilitar módulo de control de accesos</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Si está desactivado, los botones de abrir/cerrar acceso no aparecen en la app. Útil para fraccionamientos sin hardware de acceso.</p>
+                </div>
+                <Toggle value={flags.enableAccessControl} onChange={() => setFlags({ ...flags, enableAccessControl: !flags.enableAccessControl })} />
+              </label>
+            </div>
+
+            <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${!flags.enableAccessControl ? 'opacity-40 pointer-events-none' : ''}`}>
               <div className="space-y-3">
                 <h4 className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Botones de acceso</h4>
 
@@ -2793,6 +2860,54 @@ export default function ConfiguracionPage() {
             <p className="mt-4 text-xs text-slate-400">
               Máximo 5 secciones se muestran en el menú inferior de la app. Las que excedan ese límite se ocultarán automáticamente.
             </p>
+          </div>
+
+          {/* ── Secciones del home ── */}
+          <div className="glass-card mt-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="font-semibold text-slate-700">Secciones del Home</h3>
+                <p className="text-sm text-slate-500 mt-0.5">Configura qué secciones aparecen dentro de la pantalla principal y en qué orden</p>
+              </div>
+              <button onClick={handleSaveHome} disabled={savingHome} className="btn-primary text-sm disabled:opacity-60">
+                {savingHome ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+
+            {homeMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{homeMsg}</div>}
+            {homeErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{homeErr}</div>}
+
+            <div className="space-y-2">
+              {homeItems.map((item, idx) => {
+                const meta = HOME_SECTION_META[item.key];
+                return (
+                  <div key={item.key}
+                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                      item.activo ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 opacity-60'
+                    }`}>
+                    <span className="text-2xl w-9 text-center shrink-0">{meta?.emoji ?? '📱'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-slate-800 text-sm">{item.label}</p>
+                      {meta?.description && (
+                        <p className="text-xs text-slate-400 truncate">{meta.description}</p>
+                      )}
+                    </div>
+                    <div
+                      className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0 ${item.activo ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                      onClick={() => toggleHome(item.key)}
+                    >
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${item.activo ? 'translate-x-5' : ''}`} />
+                    </div>
+                    <div className="flex flex-col gap-0.5 shrink-0">
+                      <button onClick={() => moveHome(idx, -1)} disabled={idx === 0}
+                        className="w-6 h-5 flex items-center justify-center rounded text-slate-400 hover:bg-slate-100 disabled:opacity-20 disabled:cursor-default text-xs">▲</button>
+                      <button onClick={() => moveHome(idx, 1)} disabled={idx === homeItems.length - 1}
+                        className="w-6 h-5 flex items-center justify-center rounded text-slate-400 hover:bg-slate-100 disabled:opacity-20 disabled:cursor-default text-xs">▼</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

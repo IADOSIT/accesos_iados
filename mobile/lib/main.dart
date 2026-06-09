@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'core/services/local_notif_service.dart';
 import 'app.dart';
 
@@ -65,6 +66,7 @@ Future<void> _fcmBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('es_MX', null);
 
   if (!kIsWeb) {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(

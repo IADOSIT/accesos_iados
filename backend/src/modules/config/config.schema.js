@@ -82,6 +82,7 @@ const serviceQrConfigSchema = z.object({
 // ── Feature flags ─────────────────────────────────────────────────
 
 const featureFlagsSchema = z.object({
+  enableAccessControl: z.boolean().optional(),
   showResidentAccessButton: z.boolean().optional(),
   showVisitorAccessButton: z.boolean().optional(),
   showExitButton: z.boolean().optional(),
@@ -120,6 +121,7 @@ const updateTenantSchema = z.object({
   emergencyNumbers: emergencyNumbersSchema,
   serviceQrConfig: serviceQrConfigSchema,
   dashboardConfig: dashboardConfigSchema,
+  dashboardsHomeConfig: dashboardConfigSchema,
 });
 
 module.exports = { createIntegrationSchema, updateIntegrationSchema, updateTenantSchema };

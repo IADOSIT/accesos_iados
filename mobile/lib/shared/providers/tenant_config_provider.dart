@@ -178,6 +178,7 @@ class ServiceQrConfig {
 // ── Modelo TenantConfig ─────────────────────────────────────────────────────
 
 class TenantConfig {
+  final bool enableAccessControl;
   final bool showResidentAccessButton;
   final bool showVisitorAccessButton;
   final bool showExitButton;
@@ -196,8 +197,10 @@ class TenantConfig {
   final bool guiaAmarillaEnabled;
   final bool advertisingEnabled;
   final List<DashboardItem> dashboardConfig;
+  final List<DashboardItem> dashboardsHome;
 
   const TenantConfig({
+    this.enableAccessControl = true,
     this.showResidentAccessButton = false,
     this.showVisitorAccessButton = false,
     this.showExitButton = false,
@@ -215,6 +218,7 @@ class TenantConfig {
     this.guiaAmarillaEnabled = false,
     this.advertisingEnabled = false,
     this.dashboardConfig = const [],
+    this.dashboardsHome = const [],
   });
 
   factory TenantConfig.fromJson(Map<String, dynamic> settings) {
@@ -256,7 +260,15 @@ class TenantConfig {
             .toList()
         : <DashboardItem>[];
 
+    final rawDashboardsHome = (settings['dashboardsHomeConfig'] is List)
+        ? (settings['dashboardsHomeConfig'] as List)
+            .whereType<Map>()
+            .map((e) => DashboardItem.fromJson(Map<String, dynamic>.from(e)))
+            .toList()
+        : <DashboardItem>[];
+
     return TenantConfig(
+      enableAccessControl:      flags['enableAccessControl']      as bool? ?? true,
       showResidentAccessButton: flags['showResidentAccessButton'] as bool? ?? false,
       showVisitorAccessButton:  flags['showVisitorAccessButton']  as bool? ?? false,
       showExitButton:           flags['showExitButton']           as bool? ?? false,
@@ -274,6 +286,7 @@ class TenantConfig {
       guiaAmarillaEnabled:      guiaAmarillaCfg['enabled'] as bool? ?? false,
       advertisingEnabled:       advertisingCfg['enabled']  as bool? ?? false,
       dashboardConfig:          rawDashboards,
+      dashboardsHome:           rawDashboardsHome,
     );
   }
 

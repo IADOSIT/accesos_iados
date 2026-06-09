@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_colors_scheme.dart';
 import '../../../core/constants/app_strings.dart';
@@ -20,6 +21,11 @@ import '../../../shared/widgets/panic_alert_dialog.dart';
 import '../../../shared/widgets/update_banner.dart';
 import '../../../shared/widgets/notification_detail_sheet.dart';
 import '../../../features/notifications/providers/notifications_provider.dart';
+
+final _appVersionProvider = FutureProvider.autoDispose<String>((ref) async {
+  final info = await PackageInfo.fromPlatform();
+  return 'v${info.version}';
+});
 
 final dashboardStatsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final api = ref.watch(apiClientProvider);
@@ -58,6 +64,7 @@ class DashboardScreen extends ConsumerWidget {
     final auth = ref.watch(authProvider);
     final stats = ref.watch(dashboardStatsProvider);
     final tenantConfigAsync = ref.watch(tenantConfigProvider);
+    final appVersion = ref.watch(_appVersionProvider).valueOrNull ?? '';
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -113,7 +120,7 @@ class DashboardScreen extends ConsumerWidget {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          'v1.1.0',
+                          appVersion,
                           style: TextStyle(
                             fontSize: 10,
                             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
@@ -134,7 +141,7 @@ class DashboardScreen extends ConsumerWidget {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
 
-                // Stats grid (ADMIN y GUARD)
+                // ── Sección fija: estadísticas / resumen ───────────────────
                 if (auth.isAdmin || auth.isGuard) ...[
                   FadeInUp(
                     duration: const Duration(milliseconds: 400),
@@ -146,8 +153,6 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 24),
                 ],
-
-                // Resumen para RESIDENT
                 if (auth.isResident) ...[
                   FadeInUp(
                     duration: const Duration(milliseconds: 400),
@@ -160,19 +165,20 @@ class DashboardScreen extends ConsumerWidget {
                   const SizedBox(height: 24),
                 ],
 
-                // Botones de acceso configurables
-                FadeInUp(
-                  delay: const Duration(milliseconds: 200),
-                  child: tenantConfigAsync.when(
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, __) => const SizedBox.shrink(),
-                    data: (config) => _AccessButtons(auth: auth, config: config),
+                // ── Sección fija: botones de acceso (si módulo habilitado) ─
+                if (tenantConfigAsync.valueOrNull?.enableAccessControl != false)
+                  FadeInUp(
+                    delay: const Duration(milliseconds: 200),
+                    child: tenantConfigAsync.when(
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
+                      data: (config) => _AccessButtons(auth: auth, config: config),
+                    ),
                   ),
-                ),
 
                 const SizedBox(height: 24),
 
-                // Botón de pánico — todos los roles, siempre visible
+                // ── Sección fija: botón de pánico ──────────────────────────
                 FadeInUp(
                   delay: const Duration(milliseconds: 300),
                   child: const _PanicButton(),
@@ -180,81 +186,12 @@ class DashboardScreen extends ConsumerWidget {
 
                 const SizedBox(height: 16),
 
-                // Formas de pago — todos los roles (si está configurado)
-                if (tenantConfigAsync.valueOrNull?.paymentConfig.hasInfo == true)
-                  FadeInUp(
-                    delay: const Duration(milliseconds: 350),
-                    child: _PaymentShortcutCard(
-                      config: tenantConfigAsync.valueOrNull!.paymentConfig,
-                      role: auth.role,
-                    ),
-                  ),
-
-                const SizedBox(height: 24),
-
-                // Banner de actualización disponible
+                // ── Banner de actualización ────────────────────────────────
                 const UpdateBanner(),
                 const SizedBox(height: 8),
 
-                // Guía Amarilla (si habilitada)
-                if (tenantConfigAsync.valueOrNull?.guiaAmarillaEnabled == true)
-                  FadeInUp(
-                    delay: const Duration(milliseconds: 360),
-                    child: _GuiaAmarillaShortcut(),
-                  ),
-
-                // Publicidad (si habilitada)
-                if (tenantConfigAsync.valueOrNull?.advertisingEnabled == true)
-                  FadeInUp(
-                    delay: const Duration(milliseconds: 380),
-                    child: _AdvertisingCarousel(),
-                  ),
-
-                // Actividad reciente — últimas notificaciones
-                FadeInUp(
-                  delay: const Duration(milliseconds: 400),
-                  child: Row(
-                    children: [
-                      Text(
-                        AppStrings.recentActivity,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () => context.go('/notifications'),
-                        child: const Text('Ver todo'),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 8),
-
-                Consumer(builder: (context, ref, _) {
-                  final notifAsync = ref.watch(recentNotificationsProvider);
-                  if (notifAsync.isLoading) return _AccessLogSkeleton();
-
-                  final notifications = notifAsync.valueOrNull ?? [];
-                  if (notifications.isEmpty) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Center(
-                        child: Text('Sin actividad reciente',
-                            style: TextStyle(color: context.colors.textMuted, fontSize: 13)),
-                      ),
-                    );
-                  }
-
-                  return Column(
-                    children: notifications
-                        .map((n) => _RecentNotifItem(item: n))
-                        .toList(),
-                  );
-                }),
+                // ── Secciones configurables del home ───────────────────────
+                ..._buildHomeSections(context, tenantConfigAsync.valueOrNull, auth),
 
                 const SizedBox(height: 80),
               ]),
@@ -270,6 +207,123 @@ class DashboardScreen extends ConsumerWidget {
     if (hour < 12) return 'Buenos días';
     if (hour < 18) return 'Buenas tardes';
     return 'Buenas noches';
+  }
+
+  // Secciones configurables del home. Si no hay config usa el orden por defecto.
+  static const _defaultHomeSections = [
+    'pagos',
+    'guia_amarilla',
+    'publicidad',
+    'actividad_reciente',
+  ];
+
+  List<Widget> _buildHomeSections(
+    BuildContext context,
+    TenantConfig? config,
+    AuthState auth,
+  ) {
+    final sections = config?.dashboardsHome ?? [];
+    final keys = sections.isEmpty
+        ? _defaultHomeSections
+        : (sections
+              ..sort((a, b) => a.orden.compareTo(b.orden)))
+            .where((s) => s.activo)
+            .map((s) => s.key)
+            .toList();
+
+    final widgets = <Widget>[];
+    for (final key in keys) {
+      final w = _buildHomeSection(context, key, config, auth);
+      if (w != null) widgets.add(w);
+    }
+    return widgets;
+  }
+
+  Widget? _buildHomeSection(
+    BuildContext context,
+    String key,
+    TenantConfig? config,
+    AuthState auth,
+  ) {
+    switch (key) {
+      case 'pagos':
+        if (config?.paymentConfig.hasInfo != true) return null;
+        return FadeInUp(
+          delay: const Duration(milliseconds: 340),
+          child: Column(
+            children: [
+              _PaymentShortcutCard(config: config!.paymentConfig, role: auth.role),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+
+      case 'guia_amarilla':
+        if (config?.guiaAmarillaEnabled != true) return null;
+        return FadeInUp(
+          delay: const Duration(milliseconds: 360),
+          child: Column(
+            children: [_GuiaAmarillaShortcut(), const SizedBox(height: 16)],
+          ),
+        );
+
+      case 'publicidad':
+        if (config?.advertisingEnabled != true) return null;
+        return FadeInUp(
+          delay: const Duration(milliseconds: 380),
+          child: Column(
+            children: [const _AdvertisingCarousel(), const SizedBox(height: 16)],
+          ),
+        );
+
+      case 'actividad_reciente':
+        return FadeInUp(
+          delay: const Duration(milliseconds: 400),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    AppStrings.recentActivity,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => context.go('/notifications'),
+                    child: const Text('Ver todo'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Consumer(builder: (ctx, ref, _) {
+                final notifAsync = ref.watch(recentNotificationsProvider);
+                if (notifAsync.isLoading) return _AccessLogSkeleton();
+                final notifications = notifAsync.valueOrNull ?? [];
+                if (notifications.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Center(
+                      child: Text('Sin actividad reciente',
+                          style: TextStyle(color: ctx.colors.textMuted, fontSize: 13)),
+                    ),
+                  );
+                }
+                return Column(
+                  children: notifications.map((n) => _RecentNotifItem(item: n)).toList(),
+                );
+              }),
+            ],
+          ),
+        );
+
+      default:
+        return null;
+    }
   }
 }
 
