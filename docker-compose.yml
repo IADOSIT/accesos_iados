@@ -23,6 +23,7 @@ services:
       - FIREBASE_SERVICE_ACCOUNT_JSON=${FIREBASE_SERVICE_ACCOUNT_JSON}
     volumes:
       - ./uploads:/app/uploads
+    command: sh -c "npx prisma db push --accept-data-loss; npm start"
     restart: always
     extra_hosts:
       - "host.docker.internal:host-gateway"
