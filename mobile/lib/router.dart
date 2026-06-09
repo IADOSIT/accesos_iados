@@ -19,6 +19,8 @@ import 'features/payments/presentation/payments_screen.dart';
 import 'features/notifications/presentation/notifications_screen.dart';
 import 'features/profile/presentation/profile_screen.dart';
 import 'features/auth/presentation/force_change_password_screen.dart';
+import 'features/guia_amarilla/presentation/guia_amarilla_screen.dart';
+import 'features/advertising/presentation/advertising_detail_screen.dart';
 import 'features/notifications/providers/notifications_provider.dart';
 import 'shared/providers/auth_provider.dart';
 import 'shared/providers/tenant_config_provider.dart';
@@ -78,7 +80,18 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/notifications',
             builder: (_, __) => const NotificationsScreen(),
           ),
+          GoRoute(
+            path: '/guia-amarilla',
+            builder: (_, __) => const GuiaAmarillaScreen(),
+          ),
         ],
+      ),
+      GoRoute(
+        path: '/advertising/:id',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          return AdvertisingDetailScreen(ad: extra);
+        },
       ),
       GoRoute(
         path: '/profile',

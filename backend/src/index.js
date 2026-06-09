@@ -20,6 +20,9 @@ const configRoutes = require('./modules/config/config.routes');
 const notificationRoutes = require('./modules/notifications/notifications.routes');
 const serviceQrRoutes = require('./modules/service-qr/service-qr.routes');
 const saasRoutes = require('./modules/saas/saas.routes');
+const guiaAmarillaRoutes   = require('./modules/guia-amarilla/guia-amarilla.routes');
+const advertisingRoutes    = require('./modules/advertising/advertising.routes');
+const appVersionRoutes     = require('./modules/app-version/app-version.routes');
 
 const app = express();
 
@@ -65,6 +68,10 @@ const authLimiter = rateLimit({
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('combined'));
 
+// Servir archivos de uploads estáticos
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, service: 'Acceso Digital - iaDoS API', timestamp: new Date().toISOString() });
@@ -83,6 +90,9 @@ app.use('/api/config', configRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/service-qr', serviceQrRoutes);
 app.use('/api/saas', saasRoutes);
+app.use('/api/guia-amarilla',  guiaAmarillaRoutes);
+app.use('/api/advertising',    advertisingRoutes);
+app.use('/api/app-version',    appVersionRoutes);
 
 // 404
 app.use((req, res) => {

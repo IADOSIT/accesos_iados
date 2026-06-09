@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:animate_do/animate_do.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_colors_scheme.dart';
 import '../../../core/constants/app_strings.dart';
@@ -15,6 +17,7 @@ import '../../../shared/providers/tenant_config_provider.dart';
 import '../../../shared/widgets/stat_card.dart';
 import '../../../shared/widgets/iados_logo.dart';
 import '../../../shared/widgets/panic_alert_dialog.dart';
+import '../../../shared/widgets/update_banner.dart';
 
 final dashboardStatsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final api = ref.watch(apiClientProvider);
@@ -38,6 +41,18 @@ final recentServiceRequestsProvider = FutureProvider<List<dynamic>>((ref) async 
   final api = ref.watch(apiClientProvider);
   try {
     final res = await api.get('/service-qr/requests', params: {'limit': '5'});
+    return res.data['data'] as List? ?? [];
+  } catch (_) {
+    return [];
+  }
+});
+
+final advertisingProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
+  final auth = ref.watch(authProvider);
+  if (auth.tenantId == null) return [];
+  final api = ref.watch(apiClientProvider);
+  try {
+    final res = await api.get('/advertising', params: {'active': 'true'});
     return res.data['data'] as List? ?? [];
   } catch (_) {
     return [];
@@ -110,7 +125,7 @@ class DashboardScreen extends ConsumerWidget {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          'v1.0.0',
+                          'v1.1.0',
                           style: TextStyle(
                             fontSize: 10,
                             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
@@ -188,6 +203,24 @@ class DashboardScreen extends ConsumerWidget {
                   ),
 
                 const SizedBox(height: 24),
+
+                // Banner de actualización disponible
+                const UpdateBanner(),
+                const SizedBox(height: 8),
+
+                // Guía Amarilla (si habilitada)
+                if (tenantConfigAsync.valueOrNull?.guiaAmarillaEnabled == true)
+                  FadeInUp(
+                    delay: const Duration(milliseconds: 360),
+                    child: _GuiaAmarillaShortcut(),
+                  ),
+
+                // Publicidad (si habilitada)
+                if (tenantConfigAsync.valueOrNull?.advertisingEnabled == true)
+                  FadeInUp(
+                    delay: const Duration(milliseconds: 380),
+                    child: _AdvertisingCarousel(),
+                  ),
 
                 // Actividad reciente (todos los roles)
                 FadeInUp(
@@ -1426,6 +1459,228 @@ class _PaymentShortcutCard extends StatelessWidget {
               const SizedBox(width: 8),
             ],
             Icon(Icons.chevron_right_rounded, color: c.textMuted, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Shortcut Guía Amarilla ────────────────────────────────────────────────
+
+class _GuiaAmarillaShortcut extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return GestureDetector(
+      onTap: () => context.go('/guia-amarilla'),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: c.bgCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: c.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: c.warning.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text('📒', style: TextStyle(fontSize: 24)),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Guía de Servicios',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: c.textPrimary)),
+                  Text('Directorio de servicios del fraccionamiento',
+                      style: TextStyle(fontSize: 12, color: c.textMuted)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: c.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Carrusel de Publicidad ────────────────────────────────────────────────
+
+class _AdvertisingCarousel extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_AdvertisingCarousel> createState() => _AdvertisingCarouselState();
+}
+
+class _AdvertisingCarouselState extends ConsumerState<_AdvertisingCarousel> {
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
+  Timer? _timer;
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _startAutoPlay(int count) {
+    _timer?.cancel();
+    if (count <= 1) return;
+    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted) return;
+      final next = (_currentPage + 1) % count;
+      _pageController.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c   = context.colors;
+    final ads = ref.watch(advertisingProvider);
+
+    return ads.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (data) {
+        if (data.isEmpty) return const SizedBox.shrink();
+
+        WidgetsBinding.instance.addPostFrameCallback((_) => _startAutoPlay(data.length));
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text('Negocios',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: c.textPrimary)),
+                const Spacer(),
+                Text('${data.length} anuncio${data.length != 1 ? 's' : ''}',
+                    style: TextStyle(fontSize: 12, color: c.textMuted)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 180,
+              child: PageView.builder(
+                controller: _pageController,
+                onPageChanged: (i) => setState(() => _currentPage = i),
+                itemCount: data.length,
+                itemBuilder: (_, i) => _AdCard(
+                  ad: data[i] as Map<String, dynamic>,
+                  onTap: () => context.push('/advertising/${data[i]['id']}', extra: data[i]),
+                ),
+              ),
+            ),
+            if (data.length > 1) ...[
+              const SizedBox(height: 10),
+              Center(
+                child: AnimatedSmoothIndicator(
+                  activeIndex: _currentPage,
+                  count: data.length,
+                  effect: WormEffect(
+                    dotHeight: 6,
+                    dotWidth: 6,
+                    activeDotColor: c.primary,
+                    dotColor: c.border,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _AdCard extends StatelessWidget {
+  final Map<String, dynamic> ad;
+  final VoidCallback onTap;
+  const _AdCard({required this.ad, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final c        = context.colors;
+    final imageUrl = ad['imageUrl'] as String? ?? '';
+    final name     = ad['businessName'] as String? ?? '';
+    final desc     = ad['description'] as String? ?? '';
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: c.bgCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: c.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (imageUrl.isNotEmpty)
+              CachedNetworkImage(
+                imageUrl: imageUrl,
+                fit: BoxFit.cover,
+                errorWidget: (_, __, ___) => Container(
+                  color: c.bgCard,
+                  child: Icon(Icons.store_rounded, size: 48, color: c.textMuted),
+                ),
+              )
+            else
+              Container(
+                color: c.bgCard,
+                child: Icon(Icons.store_rounded, size: 48, color: c.textMuted),
+              ),
+            // Gradiente + texto abajo
+            Positioned(
+              bottom: 0, left: 0, right: 0,
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Color(0xCC000000), Colors.transparent],
+                  ),
+                ),
+                padding: const EdgeInsets.fromLTRB(12, 20, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(name,
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14)),
+                    if (desc.isNotEmpty)
+                      Text(desc,
+                          style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),

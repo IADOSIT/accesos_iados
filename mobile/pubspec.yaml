@@ -51,6 +51,15 @@ dependencies:
   # Escaneo de QR con cámara
   mobile_scanner: ^6.0.0
 
+  # Imágenes desde URL con caché
+  cached_network_image: ^3.4.1
+
+  # Indicador de página para carrusel
+  smooth_page_indicator: ^1.1.0
+
+  # Info del paquete (versión) para OTA check
+  package_info_plus: ^8.3.0
+
   # Firebase — Notificaciones Push
   firebase_core: ^3.6.0
   firebase_messaging: ^15.1.3
