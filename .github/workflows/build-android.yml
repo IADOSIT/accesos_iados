@@ -37,11 +37,12 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > android/app/release-key.jks
+          printf '%s' "$KEYSTORE_BASE64" | base64 --ignore-garbage --decode > android/app/release-key.jks
+          ls -la android/app/release-key.jks
 
       - name: Crear key.properties
         run: |
-          cat > android/key.properties << EOF
+          cat > android/key.properties <<EOF
           storePassword=${{ secrets.STORE_PASSWORD }}
           keyPassword=${{ secrets.KEY_PASSWORD }}
           keyAlias=${{ secrets.KEY_ALIAS }}
