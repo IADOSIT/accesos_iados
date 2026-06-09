@@ -7,12 +7,21 @@ import 'auth_provider.dart';
 class EmergencyContact {
   final String instance;
   final String number;
+  final bool isActive;
+  final int order;
 
-  const EmergencyContact({required this.instance, required this.number});
+  const EmergencyContact({
+    required this.instance,
+    required this.number,
+    this.isActive = true,
+    this.order = 0,
+  });
 
   factory EmergencyContact.fromJson(Map<String, dynamic> j) => EmergencyContact(
     instance: j['instance'] as String? ?? '',
     number:   j['number']   as String? ?? '',
+    isActive: j['isActive'] as bool?   ?? true,
+    order:    (j['order']   as num?)?.toInt() ?? 0,
   );
 }
 
@@ -138,7 +147,7 @@ class ServiceQrConfig {
   );
 }
 
-// ── Modelo ─────────────────────────────────────────────────────────────────
+// ── Modelo TenantConfig ─────────────────────────────────────────────────────
 
 class TenantConfig {
   final bool showResidentAccessButton;
@@ -147,7 +156,7 @@ class TenantConfig {
   final bool quickQrEnabled;
   final int quickQrDurationHours;
   final int quickQrMaxUses;
-  final String uiTheme; // "DARK" | "LIGHT"
+  final String uiTheme;
   final String? residentEntryDeviceId;
   final String? residentExitDeviceId;
   final String? visitorEntryDeviceId;
@@ -155,6 +164,9 @@ class TenantConfig {
   final PaymentConfig paymentConfig;
   final List<EmergencyContact> emergencyContacts;
   final ServiceQrConfig serviceQrConfig;
+  // Feature flags para nuevas features
+  final bool guiaAmarillaEnabled;
+  final bool advertisingEnabled;
 
   const TenantConfig({
     this.showResidentAccessButton = false,
@@ -171,6 +183,8 @@ class TenantConfig {
     this.paymentConfig = const PaymentConfig(),
     this.emergencyContacts = const [],
     this.serviceQrConfig = const ServiceQrConfig(),
+    this.guiaAmarillaEnabled = false,
+    this.advertisingEnabled = false,
   });
 
   factory TenantConfig.fromJson(Map<String, dynamic> settings) {
@@ -184,16 +198,26 @@ class TenantConfig {
         ? PaymentConfig.fromJson(settings['paymentConfig'] as Map<String, dynamic>)
         : const PaymentConfig();
 
-    final emergencyContacts = (settings['emergencyNumbers'] is List)
+    final rawContacts = (settings['emergencyNumbers'] is List)
         ? (settings['emergencyNumbers'] as List)
             .whereType<Map>()
             .map((e) => EmergencyContact.fromJson(Map<String, dynamic>.from(e)))
+            .where((c) => c.isActive)
             .toList()
         : <EmergencyContact>[];
+    rawContacts.sort((a, b) => a.order.compareTo(b.order));
 
     final svcQr = (settings['serviceQrConfig'] is Map)
         ? ServiceQrConfig.fromJson(settings['serviceQrConfig'] as Map<String, dynamic>)
         : const ServiceQrConfig();
+
+    final guiaAmarillaCfg = (settings['guiaAmarillaConfig'] is Map)
+        ? settings['guiaAmarillaConfig'] as Map<String, dynamic>
+        : <String, dynamic>{};
+
+    final advertisingCfg = (settings['advertisingConfig'] is Map)
+        ? settings['advertisingConfig'] as Map<String, dynamic>
+        : <String, dynamic>{};
 
     return TenantConfig(
       showResidentAccessButton: flags['showResidentAccessButton'] as bool? ?? false,
@@ -208,8 +232,10 @@ class TenantConfig {
       visitorEntryDeviceId:     ne(flags['visitorEntryDeviceId']),
       visitorExitDeviceId:      ne(flags['visitorExitDeviceId']),
       paymentConfig:            pc,
-      emergencyContacts:        emergencyContacts,
+      emergencyContacts:        rawContacts,
       serviceQrConfig:          svcQr,
+      guiaAmarillaEnabled:      guiaAmarillaCfg['enabled'] as bool? ?? false,
+      advertisingEnabled:       advertisingCfg['enabled']  as bool? ?? false,
     );
   }
 

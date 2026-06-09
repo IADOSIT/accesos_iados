@@ -152,11 +152,11 @@ async function getTenantSettings(tenantId) {
 }
 
 async function updateTenantSettings(tenantId, data) {
-  const { featureFlags, uiTheme, paymentConfig, emergencyNumbers, serviceQrConfig, saasConfig, ...tenantFields } = data;
+  const { featureFlags, uiTheme, paymentConfig, emergencyNumbers, serviceQrConfig, saasConfig, guiaAmarillaConfig, advertisingConfig, ...tenantFields } = data;
 
   const hasSettingsChange = featureFlags !== undefined || uiTheme !== undefined
     || paymentConfig !== undefined || emergencyNumbers !== undefined || serviceQrConfig !== undefined
-    || saasConfig !== undefined;
+    || saasConfig !== undefined || guiaAmarillaConfig !== undefined || advertisingConfig !== undefined;
 
   if (hasSettingsChange) {
     const current = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
@@ -173,6 +173,8 @@ async function updateTenantSettings(tenantId, data) {
       ...(emergencyNumbers !== undefined && { emergencyNumbers }),
       ...(serviceQrConfig !== undefined && { serviceQrConfig: { ...currentSvcQr, ...serviceQrConfig } }),
       ...(saasConfig !== undefined && { saasConfig: { ...currentSaas, ...saasConfig } }),
+      ...(guiaAmarillaConfig !== undefined && { guiaAmarillaConfig }),
+      ...(advertisingConfig !== undefined && { advertisingConfig }),
     };
   }
 

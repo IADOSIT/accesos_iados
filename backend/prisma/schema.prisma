@@ -36,6 +36,8 @@ model Tenant {
   serviceQr          ServiceQR?
   serviceRequests    ServiceRequest[]
   saasPayments       SaasPayment[]
+  guiaAmarillaEntries GuiaAmarillaEntry[]
+  advertisements      Advertisement[]
 
   @@map("tenants")
 }
@@ -501,6 +503,53 @@ model SaasPayment {
   @@unique([tenantId, period])
   @@index([tenantId, status])
   @@map("saas_payments")
+}
+
+// =============================================
+// GUÍA AMARILLA (Directorio de servicios)
+// =============================================
+model GuiaAmarillaEntry {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  category    String
+  phone       String
+  description String?
+  emoji       String   @default("📞")
+  isActive    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@index([tenantId, order])
+  @@map("guia_amarilla_entries")
+}
+
+// =============================================
+// PUBLICIDAD / ANUNCIOS
+// =============================================
+model Advertisement {
+  id           String   @id @default(uuid())
+  tenantId     String
+  businessName String
+  phone        String?
+  address      String?
+  website      String?
+  description  String?
+  imageUrl     String?
+  isActive     Boolean  @default(true)
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@index([tenantId, order])
+  @@map("advertisements")
 }
 
 // =============================================
