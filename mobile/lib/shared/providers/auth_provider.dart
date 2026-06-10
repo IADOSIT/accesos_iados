@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../core/storage/secure_storage.dart';
@@ -208,7 +209,14 @@ class AuthNotifier extends StateNotifier<AuthState> {
           await _storage.saveFCMToken(newToken);
         } catch (_) {}
       });
+      // Solicitar exención de optimización de batería para recibir push con app cerrada
+      _requestBatteryExemption();
     } catch (_) {} // silencioso — no afecta el login
+  }
+
+  void _requestBatteryExemption() {
+    const channel = MethodChannel('mx.iados.acceso_digital/battery');
+    channel.invokeMethod('requestExemption').catchError((_) {});
   }
 }
 
