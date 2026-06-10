@@ -122,6 +122,7 @@ const updateTenantSchema = z.object({
   serviceQrConfig: serviceQrConfigSchema,
   dashboardConfig: dashboardConfigSchema,
   dashboardsHomeConfig: dashboardConfigSchema,
+  dashboardStatsConfig: dashboardConfigSchema,
 });
 
 module.exports = { createIntegrationSchema, updateIntegrationSchema, updateTenantSchema };

@@ -250,6 +250,20 @@ const DEFAULT_DASHBOARDS: DashboardItem[] = [
   { key: 'guia_amarilla',  label: 'Directorio',  icon: 'book',         activo: false, orden: 5 },
 ];
 
+const STATS_META: Record<string, { emoji: string; description: string }> = {
+  accesos_hoy:          { emoji: '🚪', description: 'Total de accesos registrados hoy' },
+  unidades_activas:     { emoji: '🏠', description: 'Número de unidades/residentes' },
+  pagos_pendientes:     { emoji: '💳', description: 'Unidades con pagos en mora' },
+  dispositivos_online:  { emoji: '📡', description: 'Dispositivos de acceso conectados' },
+};
+
+const DEFAULT_STATS_CONFIG: DashboardItem[] = [
+  { key: 'accesos_hoy',         label: 'Accesos hoy',        icon: 'login',         activo: true, orden: 0 },
+  { key: 'unidades_activas',    label: 'Unidades activas',   icon: 'home',          activo: true, orden: 1 },
+  { key: 'pagos_pendientes',    label: 'Pagos pendientes',   icon: 'receipt',       activo: true, orden: 2 },
+  { key: 'dispositivos_online', label: 'Dispositivos online',icon: 'router',        activo: true, orden: 3 },
+];
+
 const HOME_SECTION_META: Record<string, { emoji: string; description: string }> = {
   pagos:              { emoji: '💳', description: 'Acceso rápido a cargos y formas de pago' },
   guia_amarilla:      { emoji: '📒', description: 'Directorio de servicios (requiere módulo activo)' },
@@ -1083,6 +1097,12 @@ export default function ConfiguracionPage() {
   const [homeErr, setHomeErr] = useState('');
   const [savingHome, setSavingHome] = useState(false);
 
+  // ── Estadísticas del home ──
+  const [statsItems, setStatsItems] = useState<DashboardItem[]>([...DEFAULT_STATS_CONFIG]);
+  const [statsMsg, setStatsMsg] = useState('');
+  const [statsErr, setStatsErr] = useState('');
+  const [savingStats, setSavingStats] = useState(false);
+
   // ── Integraciones ──
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [showIntModal, setShowIntModal] = useState(false);
@@ -1115,6 +1135,9 @@ export default function ConfiguracionPage() {
       }
       if (s.dashboardsHomeConfig && Array.isArray(s.dashboardsHomeConfig) && s.dashboardsHomeConfig.length > 0) {
         setHomeItems(s.dashboardsHomeConfig);
+      }
+      if (s.dashboardStatsConfig && Array.isArray(s.dashboardStatsConfig) && s.dashboardStatsConfig.length > 0) {
+        setStatsItems(s.dashboardStatsConfig);
       }
     }).catch(() => {});
     serviceQrApi.currentQR().then((res: any) => {
@@ -1545,6 +1568,26 @@ export default function ConfiguracionPage() {
 
   function toggleHome(key: string) {
     setHomeItems((items) =>
+      items.map((d) => d.key === key ? { ...d, activo: !d.activo } : d)
+    );
+  }
+
+  // ── Handlers estadísticas del home ──
+  const handleSaveStats = async () => {
+    setSavingStats(true); setStatsMsg(''); setStatsErr('');
+    try {
+      await configApi.updateTenant({ dashboardStatsConfig: statsItems });
+      setStatsMsg('Estadísticas guardadas');
+      setTimeout(() => setStatsMsg(''), 3000);
+    } catch (err) {
+      setStatsErr(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setSavingStats(false);
+    }
+  };
+
+  function toggleStat(key: string) {
+    setStatsItems((items) =>
       items.map((d) => d.key === key ? { ...d, activo: !d.activo } : d)
     );
   }
@@ -2919,6 +2962,48 @@ export default function ConfiguracionPage() {
                         className="w-6 h-5 flex items-center justify-center rounded text-slate-400 hover:bg-slate-100 disabled:opacity-20 disabled:cursor-default text-xs">▲</button>
                       <button onClick={() => moveHome(idx, 1)} disabled={idx === homeItems.length - 1}
                         className="w-6 h-5 flex items-center justify-center rounded text-slate-400 hover:bg-slate-100 disabled:opacity-20 disabled:cursor-default text-xs">▼</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Estadísticas del Home ── */}
+          <div className="glass-card mt-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="font-semibold text-slate-700">Estadísticas del Home</h3>
+                <p className="text-sm text-slate-500 mt-0.5">Controla qué tarjetas de resumen aparecen en el dashboard de admin/guardia</p>
+              </div>
+              <button onClick={handleSaveStats} disabled={savingStats} className="btn-primary text-sm disabled:opacity-60">
+                {savingStats ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+
+            {statsMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{statsMsg}</div>}
+            {statsErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{statsErr}</div>}
+
+            <div className="space-y-2">
+              {statsItems.map((item) => {
+                const meta = STATS_META[item.key];
+                return (
+                  <div key={item.key}
+                    className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                      item.activo ? 'border-slate-200 bg-white' : 'border-slate-100 bg-slate-50 opacity-60'
+                    }`}>
+                    <span className="text-2xl w-9 text-center shrink-0">{meta?.emoji ?? '📊'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-slate-800 text-sm">{item.label}</p>
+                      {meta?.description && (
+                        <p className="text-xs text-slate-400 truncate">{meta.description}</p>
+                      )}
+                    </div>
+                    <div
+                      className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer shrink-0 ${item.activo ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                      onClick={() => toggleStat(item.key)}
+                    >
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${item.activo ? 'translate-x-5' : ''}`} />
                     </div>
                   </div>
                 );

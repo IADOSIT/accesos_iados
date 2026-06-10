@@ -146,9 +146,9 @@ class DashboardScreen extends ConsumerWidget {
                   FadeInUp(
                     duration: const Duration(milliseconds: 400),
                     child: stats.when(
-                      loading: () => _StatsGrid(isLoading: true),
-                      error: (_, __) => _StatsGrid(isLoading: false, error: true),
-                      data: (data) => _StatsGrid(data: data),
+                      loading: () => _StatsGrid(isLoading: true, statsConfig: tenantConfigAsync.valueOrNull?.dashboardStatsConfig),
+                      error: (_, __) => _StatsGrid(isLoading: false, error: true, statsConfig: tenantConfigAsync.valueOrNull?.dashboardStatsConfig),
+                      data: (data) => _StatsGrid(data: data, statsConfig: tenantConfigAsync.valueOrNull?.dashboardStatsConfig),
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -502,20 +502,23 @@ class _StatsGrid extends StatelessWidget {
   final Map<String, dynamic>? data;
   final bool isLoading;
   final bool error;
+  final List<DashboardItem>? statsConfig;
 
-  const _StatsGrid({this.data, this.isLoading = false, this.error = false});
+  const _StatsGrid({this.data, this.isLoading = false, this.error = false, this.statsConfig});
+
+  bool _isVisible(String key) {
+    final cfg = statsConfig;
+    if (cfg == null || cfg.isEmpty) return true;
+    final item = cfg.where((e) => e.key == key).firstOrNull;
+    return item?.activo ?? true;
+  }
 
   @override
   Widget build(BuildContext context) {
     final stats = data ?? {};
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      childAspectRatio: 1.35,
-      children: [
+
+    final allCards = [
+      if (_isVisible('accesos_hoy'))
         StatCard(
           label: AppStrings.todayAccess,
           value: stats['todayAccesses']?.toString() ?? '—',
@@ -523,6 +526,7 @@ class _StatsGrid extends StatelessWidget {
           accentColor: context.colors.primary,
           isLoading: isLoading,
         ),
+      if (_isVisible('unidades_activas'))
         StatCard(
           label: AppStrings.activeUnits,
           value: stats['totalUnits']?.toString() ?? '—',
@@ -530,6 +534,7 @@ class _StatsGrid extends StatelessWidget {
           accentColor: context.colors.info,
           isLoading: isLoading,
         ),
+      if (_isVisible('pagos_pendientes'))
         StatCard(
           label: AppStrings.pendingPayments,
           value: stats['delinquentUnits']?.toString() ?? '—',
@@ -537,6 +542,7 @@ class _StatsGrid extends StatelessWidget {
           accentColor: context.colors.warning,
           isLoading: isLoading,
         ),
+      if (_isVisible('dispositivos_online'))
         StatCard(
           label: AppStrings.devicesOnline,
           value: stats['onlineDevices']?.toString() ?? '—',
@@ -544,7 +550,18 @@ class _StatsGrid extends StatelessWidget {
           accentColor: context.colors.success,
           isLoading: isLoading,
         ),
-      ],
+    ];
+
+    if (allCards.isEmpty) return const SizedBox.shrink();
+
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 12,
+      mainAxisSpacing: 12,
+      childAspectRatio: 1.35,
+      children: allCards,
     );
   }
 }
@@ -1150,17 +1167,30 @@ class _PanicButtonState extends ConsumerState<_PanicButton> {
       }
     } catch (e) {
       if (mounted) setState(() => _loading = false);
-      final msg = e.toString();
-      final match = RegExp(r'Espera (\d+)').firstMatch(msg);
-      if (match != null) {
-        _startCooldown(int.parse(match.group(1)!));
+
+      int? remaining;
+      if (e is DioException && e.response?.statusCode == 429) {
+        final body = e.response?.data;
+        if (body is Map) {
+          remaining = (body['details']?['remainingSeconds'] as num?)?.toInt();
+          if (remaining == null) {
+            final msg = body['message'] as String? ?? '';
+            final m = RegExp(r'Espera (\d+)').firstMatch(msg);
+            if (m != null) remaining = int.tryParse(m.group(1)!);
+          }
+        }
       }
-      if (mounted) {
+      if (remaining == null) {
+        final m = RegExp(r'Espera (\d+)').firstMatch(e.toString());
+        if (m != null) remaining = int.tryParse(m.group(1)!);
+      }
+
+      if (remaining != null && remaining > 0) {
+        _startCooldown(remaining);
+      } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(match != null
-                ? 'Ya enviaste una alerta reciente. Espera $_remainingSeconds s.'
-                : 'Error al enviar alerta. Intenta de nuevo.'),
+          const SnackBar(
+            content: Text('Error al enviar alerta. Intenta de nuevo.'),
             backgroundColor: Colors.orange,
           ),
         );

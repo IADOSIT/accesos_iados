@@ -198,6 +198,7 @@ class TenantConfig {
   final bool advertisingEnabled;
   final List<DashboardItem> dashboardConfig;
   final List<DashboardItem> dashboardsHome;
+  final List<DashboardItem> dashboardStatsConfig;
 
   const TenantConfig({
     this.enableAccessControl = true,
@@ -219,6 +220,7 @@ class TenantConfig {
     this.advertisingEnabled = true,
     this.dashboardConfig = const [],
     this.dashboardsHome = const [],
+    this.dashboardStatsConfig = const [],
   });
 
   factory TenantConfig.fromJson(Map<String, dynamic> settings) {
@@ -267,6 +269,13 @@ class TenantConfig {
             .toList()
         : <DashboardItem>[];
 
+    final rawDashboardStats = (settings['dashboardStatsConfig'] is List)
+        ? (settings['dashboardStatsConfig'] as List)
+            .whereType<Map>()
+            .map((e) => DashboardItem.fromJson(Map<String, dynamic>.from(e)))
+            .toList()
+        : <DashboardItem>[];
+
     return TenantConfig(
       enableAccessControl:      flags['enableAccessControl']      as bool? ?? true,
       showResidentAccessButton: flags['showResidentAccessButton'] as bool? ?? false,
@@ -287,6 +296,7 @@ class TenantConfig {
       advertisingEnabled:       advertisingCfg['enabled']  as bool? ?? true,
       dashboardConfig:          rawDashboards,
       dashboardsHome:           rawDashboardsHome,
+      dashboardStatsConfig:     rawDashboardStats,
     );
   }
 
