@@ -37,7 +37,7 @@ if (env.FIREBASE_KEY_PATH || env.FIREBASE_SERVICE_ACCOUNT_JSON) {
 
 async function _clearInvalidToken(fcmToken) {
   try {
-    await prisma.user.updateMany({ where: { fcmToken }, data: { fcmToken: null } });
+    await prisma.deviceSession.updateMany({ where: { fcmToken }, data: { fcmToken: null } });
     console.log('[FCM] Token inválido limpiado de BD');
   } catch (_) {}
 }
@@ -79,16 +79,16 @@ async function _save(tenantId, userId, type, title, body, data) {
   }
 }
 
-// Envía push y guarda en BD para un usuario específico
+// Envía push y guarda en BD para un usuario específico (todos sus dispositivos activos)
 async function sendToUser(userId, tenantId, type, title, body, data) {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
+    const sessions = await prisma.deviceSession.findMany({
+      where: { userId, isActive: true, fcmToken: { not: null } },
       select: { fcmToken: true },
     });
     await Promise.all([
       _save(tenantId, userId, type, title, body, data),
-      _send(user?.fcmToken, title, body, data, type),
+      ...sessions.map(s => _send(s.fcmToken, title, body, data, type)),
     ]);
   } catch (err) {
     console.error('[FCM] sendToUser error:', err.message);
@@ -196,14 +196,14 @@ function sendUrgentToRole(tenantId, role, type, title, body, data) {
       select: { userId: true },
     });
     const userIds = [...new Set(memberships.map(m => m.userId))];
-    const users = await prisma.user.findMany({
-      where: { id: { in: userIds } },
-      select: { id: true, fcmToken: true },
+    const sessions = await prisma.deviceSession.findMany({
+      where: { userId: { in: userIds }, isActive: true, fcmToken: { not: null } },
+      select: { userId: true, fcmToken: true },
     });
-    await Promise.all(users.flatMap(u => [
-      _sendUrgent(u.fcmToken, title, body, data),
-      _save(tenantId, u.id, type, title, body, data),
-    ]));
+    await Promise.all([
+      ...sessions.map(s => _sendUrgent(s.fcmToken, title, body, data)),
+      ...userIds.map(uid => _save(tenantId, uid, type, title, body, data)),
+    ]);
   })().catch(err => console.error('[FCM] sendUrgentToRole error:', err.message));
 }
 
@@ -215,14 +215,14 @@ function sendUrgentToUnit(tenantId, unitId, type, title, body, data) {
       select: { userId: true },
     });
     const userIds = [...new Set(residents.map(r => r.userId))];
-    const users = await prisma.user.findMany({
-      where: { id: { in: userIds } },
-      select: { id: true, fcmToken: true },
+    const sessions = await prisma.deviceSession.findMany({
+      where: { userId: { in: userIds }, isActive: true, fcmToken: { not: null } },
+      select: { userId: true, fcmToken: true },
     });
-    await Promise.all(users.flatMap(u => [
-      _sendUrgent(u.fcmToken, title, body, data),
-      _save(tenantId, u.id, type, title, body, data),
-    ]));
+    await Promise.all([
+      ...sessions.map(s => _sendUrgent(s.fcmToken, title, body, data)),
+      ...userIds.map(uid => _save(tenantId, uid, type, title, body, data)),
+    ]);
   })().catch(err => console.error('[FCM] sendUrgentToUnit error:', err.message));
 }
 
@@ -234,14 +234,14 @@ function sendServiceRequestToUnit(tenantId, unitId, type, title, body, data) {
       select: { userId: true },
     });
     const userIds = [...new Set(residents.map(r => r.userId))];
-    const users = await prisma.user.findMany({
-      where: { id: { in: userIds } },
-      select: { id: true, fcmToken: true },
+    const sessions = await prisma.deviceSession.findMany({
+      where: { userId: { in: userIds }, isActive: true, fcmToken: { not: null } },
+      select: { userId: true, fcmToken: true },
     });
-    await Promise.all(users.flatMap(u => [
-      _sendServiceRequestPush(u.fcmToken, title, body, data),
-      _save(tenantId, u.id, type, title, body, data),
-    ]));
+    await Promise.all([
+      ...sessions.map(s => _sendServiceRequestPush(s.fcmToken, title, body, data)),
+      ...userIds.map(uid => _save(tenantId, uid, type, title, body, data)),
+    ]);
   })().catch(err => console.error('[FCM] sendServiceRequestToUnit error:', err.message));
 }
 

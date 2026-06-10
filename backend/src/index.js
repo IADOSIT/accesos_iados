@@ -23,6 +23,7 @@ const saasRoutes = require('./modules/saas/saas.routes');
 const guiaAmarillaRoutes   = require('./modules/guia-amarilla/guia-amarilla.routes');
 const advertisingRoutes    = require('./modules/advertising/advertising.routes');
 const appVersionRoutes     = require('./modules/app-version/app-version.routes');
+const mobileSessionsRoutes = require('./modules/mobile-sessions/mobile-sessions.routes');
 
 const app = express();
 
@@ -96,6 +97,7 @@ app.use('/api/saas', saasRoutes);
 app.use('/api/guia-amarilla',  guiaAmarillaRoutes);
 app.use('/api/advertising',    advertisingRoutes);
 app.use('/api/app-version',    appVersionRoutes);
+app.use('/api/mobile-sessions', mobileSessionsRoutes);
 
 // 404
 app.use((req, res) => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { unitsApi } from '@/services/api';
+import { unitsApi, mobileSessionsApi } from '@/services/api';
 import { useAuthStore } from '@/stores/auth';
 import PageHeader from '@/components/ui/PageHeader';
 import DataTable from '@/components/ui/DataTable';
@@ -79,6 +79,51 @@ export default function UnidadesPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+
+  // Device sessions
+  const [devUnit, setDevUnit] = useState<any>(null);
+  const [devSessions, setDevSessions] = useState<any[]>([]);
+  const [devLoading, setDevLoading] = useState(false);
+  const [devMaxDevices, setDevMaxDevices] = useState(1);
+  const [devSaving, setDevSaving] = useState(false);
+
+  const openDevModal = async (row: any) => {
+    setDevUnit(row);
+    setDevMaxDevices(row.maxDevices ?? 1);
+    setDevLoading(true);
+    try {
+      const res: any = await mobileSessionsApi.getByUnit(row.id);
+      setDevSessions(res.data || []);
+    } catch { setDevSessions([]); }
+    finally { setDevLoading(false); }
+  };
+
+  const handleRevokeSession = async (sessionId: string) => {
+    try {
+      await mobileSessionsApi.revokeSession(sessionId);
+      setDevSessions(s => s.map(x => x.id === sessionId ? { ...x, isActive: false, fcmToken: null } : x));
+    } catch (err) { alert(err instanceof Error ? err.message : 'Error'); }
+  };
+
+  const handleRevokeAll = async () => {
+    if (!devUnit) return;
+    if (!confirm('¿Revocar todos los dispositivos de esta unidad?')) return;
+    try {
+      await mobileSessionsApi.revokeAllForUnit(devUnit.id);
+      setDevSessions(s => s.map(x => ({ ...x, isActive: false, fcmToken: null })));
+    } catch (err) { alert(err instanceof Error ? err.message : 'Error'); }
+  };
+
+  const handleSaveMaxDevices = async () => {
+    if (!devUnit) return;
+    setDevSaving(true);
+    try {
+      await mobileSessionsApi.setUnitMaxDevices(devUnit.id, devMaxDevices);
+      setUnits(us => us.map(u => u.id === devUnit.id ? { ...u, maxDevices: devMaxDevices } : u));
+      setDevUnit((d: any) => d ? { ...d, maxDevices: devMaxDevices } : d);
+    } catch (err) { alert(err instanceof Error ? err.message : 'Error'); }
+    finally { setDevSaving(false); }
+  };
 
   // CSV import
   const fileRef = useRef<HTMLInputElement>(null);
@@ -240,8 +285,9 @@ export default function UnidadesPage() {
     )},
     { key: 'residents', header: 'Residentes', render: (row: any) => <span className="badge-info">{row.residents?.length || 0}</span> },
     { key: 'actions', header: 'Acciones', render: (row: any) => (
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <button onClick={() => handleEditOpen(row)} className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200">Editar</button>
+        <button onClick={() => openDevModal(row)} className="text-xs px-2 py-1 rounded bg-violet-100 text-violet-700 hover:bg-violet-200">Dispositivos</button>
         <button onClick={() => handleToggle(row)}
           className={`text-xs px-2 py-1 rounded ${row.isActive !== false ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}>
           {row.isActive !== false ? 'Desactivar' : 'Activar'}
@@ -287,6 +333,72 @@ export default function UnidadesPage() {
       {/* Modal Editar */}
       <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Editar Unidad">
         <UnitForm values={editForm} onChange={setEditForm} onSubmit={handleEditSubmit} onClose={() => setShowEditModal(false)} submitLabel="Guardar cambios" />
+      </Modal>
+
+      {/* Modal Dispositivos */}
+      <Modal isOpen={!!devUnit} onClose={() => setDevUnit(null)} title={`Dispositivos — Unidad ${devUnit?.identifier || ''}`} size="lg">
+        <div className="space-y-5">
+          {/* Límite de dispositivos */}
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-violet-50 border border-violet-100">
+            <div className="flex-1">
+              <p className="text-sm font-medium text-violet-800">Límite de dispositivos por unidad</p>
+              <p className="text-xs text-violet-500 mt-0.5">Máximo de dispositivos móviles permitidos por cada usuario de esta unidad</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <select value={devMaxDevices} onChange={e => setDevMaxDevices(Number(e.target.value))}
+                className="text-sm border border-violet-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-violet-400">
+                {[1,2,3,4,5].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <button onClick={handleSaveMaxDevices} disabled={devSaving}
+                className="text-xs px-3 py-1.5 rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">
+                {devSaving ? '...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+
+          {/* Lista de sesiones */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-semibold text-slate-700">Sesiones registradas</p>
+              {devSessions.some(s => s.isActive) && (
+                <button onClick={handleRevokeAll} className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200">
+                  Revocar todos
+                </button>
+              )}
+            </div>
+
+            {devLoading ? (
+              <p className="text-sm text-slate-400 py-4 text-center">Cargando...</p>
+            ) : devSessions.length === 0 ? (
+              <p className="text-sm text-slate-400 py-4 text-center">Sin dispositivos registrados</p>
+            ) : (
+              <div className="space-y-2">
+                {devSessions.map(s => (
+                  <div key={s.id} className={`flex items-center gap-3 p-3 rounded-xl border ${s.isActive ? 'bg-white border-slate-200' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+                    <span className="text-xl">{s.platform === 'ios' ? '🍎' : s.platform === 'android' ? '🤖' : '📱'}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 truncate">{s.deviceName || 'Dispositivo desconocido'}</p>
+                      <p className="text-xs text-slate-400">
+                        {s.platform || '-'} · último acceso: {new Date(s.lastSeenAt).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                        {s.isActive ? 'Activo' : 'Revocado'}
+                      </span>
+                      {s.isActive && (
+                        <button onClick={() => handleRevokeSession(s.id)}
+                          className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200">
+                          Revocar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </Modal>
 
       {/* Modal Importar CSV */}

@@ -143,6 +143,17 @@ export const advertisingApi = {
   },
 };
 
+// ============ SESIONES MÓVILES ============
+export const mobileSessionsApi = {
+  getByUnit: (unitId: string) => GET(`/mobile-sessions/unit/${unitId}`),
+  getByUser: (userId: string) => GET(`/mobile-sessions/user/${userId}`),
+  revokeSession: (sessionId: string) => DELETE(`/mobile-sessions/${sessionId}`),
+  revokeAllForUser: (userId: string) => DELETE(`/mobile-sessions/user/${userId}/all`),
+  revokeAllForUnit: (unitId: string) => DELETE(`/mobile-sessions/unit/${unitId}/all`),
+  setUnitMaxDevices: (unitId: string, maxDevices: number) => PATCH(`/mobile-sessions/unit/${unitId}/max-devices`, { maxDevices }),
+  setUserOverride: (userId: string, maxDevicesOverride: number | null) => PATCH(`/mobile-sessions/user/${userId}/override`, { maxDevicesOverride }),
+};
+
 // ============ REPORTES ============
 export const reportsApi = {
   dashboard: () => GET('/reports/dashboard'),

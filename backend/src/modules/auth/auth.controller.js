@@ -3,7 +3,8 @@ const { success, error } = require('../../utils/apiResponse');
 
 async function login(req, res) {
   try {
-    const result = await authService.login(req.validated.email, req.validated.password);
+    const { email, password, deviceId, deviceName, platform, fcmToken } = req.validated;
+    const result = await authService.login(email, password, { deviceId, deviceName, platform, fcmToken });
     return success(res, result, 'Inicio de sesión exitoso');
   } catch (err) {
     return error(res, err.message, err.status || 500);
@@ -50,9 +51,8 @@ async function me(req, res) {
 
 async function updateFCMToken(req, res) {
   try {
-    const { token } = req.body;
-    if (!token) return error(res, 'token requerido', 400);
-    await authService.updateFCMToken(req.user.id, token);
+    const { token, deviceId } = req.body;
+    await authService.updateFCMToken(req.user.id, deviceId || null, token || null);
     return success(res, null, 'Token FCM actualizado');
   } catch (err) {
     return error(res, err.message, err.status || 500);

@@ -53,18 +53,19 @@ model User {
   lastName     String
   phone        String?
   avatarUrl    String?
-  fcmToken     String?
+  maxDevicesOverride Int? @map("max_devices_override")
   isActive           Boolean  @default(true)
   isSuperAdmin       Boolean  @default(false)
   mustChangePassword Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tenants     UserTenant[]
-  accessLogs  AccessLog[]
-  qrCodes     QRCode[]
-  auditLogs   AuditLog[]
-  panicAlerts PanicAlert[]
+  tenants        UserTenant[]
+  accessLogs     AccessLog[]
+  qrCodes        QRCode[]
+  auditLogs      AuditLog[]
+  panicAlerts    PanicAlert[]
+  deviceSessions DeviceSession[]
 
   @@map("users")
 }
@@ -111,6 +112,7 @@ model Unit {
   ownerName   String?
   ownerPhone  String?
   ownerEmail  String?
+  maxDevices   Int     @default(1) @map("max_devices")
   isActive    Boolean @default(true)
   isDelinquent Boolean @default(false)
 
@@ -554,6 +556,27 @@ model Advertisement {
   @@index([tenantId, isActive])
   @@index([tenantId, order])
   @@map("advertisements")
+}
+
+// =============================================
+// SESIONES DE DISPOSITIVOS MÓVILES
+// =============================================
+model DeviceSession {
+  id          String   @id @default(cuid())
+  userId      String
+  deviceId    String   // UUID estable generado al primer arranque de la app
+  deviceName  String?
+  platform    String?  // "android" | "ios"
+  fcmToken    String?
+  isActive    Boolean  @default(true)
+  lastSeenAt  DateTime @default(now()) @updatedAt
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId])
+  @@index([userId, isActive])
+  @@map("device_sessions")
 }
 
 // =============================================

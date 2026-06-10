@@ -1,9 +1,11 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../core/storage/secure_storage.dart';
 import '../../core/network/api_client.dart';
+import '../../core/device/device_info_service.dart';
 
 // Estado de sesión del usuario
 class AuthState {
@@ -19,6 +21,8 @@ class AuthState {
   final String? error;
   final bool mustChangePassword;
 
+  final bool deviceLimitReached;
+
   const AuthState({
     this.isAuthenticated = false,
     this.userId,
@@ -31,6 +35,7 @@ class AuthState {
     this.isLoading = false,
     this.error,
     this.mustChangePassword = false,
+    this.deviceLimitReached = false,
   });
 
   bool get isAdmin => role == 'ADMIN';
@@ -54,6 +59,7 @@ class AuthState {
     bool? isLoading,
     String? error,
     bool? mustChangePassword,
+    bool? deviceLimitReached,
   }) =>
       AuthState(
         isAuthenticated: isAuthenticated ?? this.isAuthenticated,
@@ -67,6 +73,7 @@ class AuthState {
         isLoading: isLoading ?? this.isLoading,
         error: error,
         mustChangePassword: mustChangePassword ?? this.mustChangePassword,
+        deviceLimitReached: deviceLimitReached ?? this.deviceLimitReached,
       );
 }
 
@@ -113,11 +120,18 @@ class AuthNotifier extends StateNotifier<AuthState> {
   }
 
   Future<bool> login(String email, String password) async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(isLoading: true, error: null, deviceLimitReached: false);
     try {
+      final deviceId = await DeviceInfoService.getDeviceId(_storage);
+      final deviceName = await DeviceInfoService.getDeviceName();
+      final platform = DeviceInfoService.platform;
+
       final response = await _api.post('/auth/login', data: {
         'email': email,
         'password': password,
+        'deviceId': deviceId,
+        if (deviceName != null) 'deviceName': deviceName,
+        'platform': platform,
       });
 
       final data = response.data['data'];
@@ -169,11 +183,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
       _registerFCMToken(); // fire-and-forget, no bloquea el login
       return true;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 423) {
+        final msg = e.response?.data?['message'] as String? ??
+            'Límite de dispositivos alcanzado. Pide al administrador que revoque un dispositivo registrado.';
+        state = state.copyWith(isLoading: false, error: msg, deviceLimitReached: true);
+      } else {
+        state = state.copyWith(isLoading: false, error: 'Credenciales incorrectas', deviceLimitReached: false);
+      }
+      return false;
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        error: 'Credenciales incorrectas',
-      );
+      state = state.copyWith(isLoading: false, error: 'Credenciales incorrectas', deviceLimitReached: false);
       return false;
     }
   }
@@ -200,12 +220,15 @@ class AuthNotifier extends StateNotifier<AuthState> {
     try {
       final token = await FirebaseMessaging.instance.getToken();
       if (token == null) return;
-      await _api.put('/auth/fcm-token', data: {'token': token});
+      final deviceId = await _storage.getDeviceId();
+      final body = {'token': token, if (deviceId != null) 'deviceId': deviceId};
+      await _api.put('/auth/fcm-token', data: body);
       await _storage.saveFCMToken(token);
       // Actualizar token si Firebase lo rota
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
         try {
-          await _api.put('/auth/fcm-token', data: {'token': newToken});
+          final did = await _storage.getDeviceId();
+          await _api.put('/auth/fcm-token', data: {'token': newToken, if (did != null) 'deviceId': did});
           await _storage.saveFCMToken(newToken);
         } catch (_) {}
       });

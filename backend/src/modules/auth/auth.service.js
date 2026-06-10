@@ -3,10 +3,18 @@ const jwt = require('jsonwebtoken');
 const prisma = require('../../config/database');
 const env = require('../../config/env');
 
-async function login(email, password) {
+async function login(email, password, deviceInfo = {}) {
   const user = await prisma.user.findUnique({
     where: { email },
-    include: { tenants: { orderBy: { createdAt: 'asc' }, include: { tenant: true } } },
+    include: {
+      tenants: {
+        orderBy: { createdAt: 'asc' },
+        include: {
+          tenant: true,
+          unit: { select: { id: true, maxDevices: true } },
+        },
+      },
+    },
   });
 
   if (!user || !user.isActive) {
@@ -16,6 +24,52 @@ async function login(email, password) {
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
     throw { status: 401, message: 'Credenciales inválidas' };
+  }
+
+  // Verificar límite de dispositivos si se envía deviceId
+  const { deviceId, deviceName, platform, fcmToken } = deviceInfo;
+  if (deviceId) {
+    const existingSession = await prisma.deviceSession.findUnique({
+      where: { userId_deviceId: { userId: user.id, deviceId } },
+    });
+
+    if (!existingSession || !existingSession.isActive) {
+      // Dispositivo nuevo — verificar límite
+      const effectiveLimit = user.maxDevicesOverride ??
+        (() => {
+          const unitMaxDevices = user.tenants
+            .filter(ut => ut.unit)
+            .map(ut => ut.unit.maxDevices);
+          return unitMaxDevices.length > 0 ? Math.min(...unitMaxDevices) : 1;
+        })();
+
+      const activeCount = await prisma.deviceSession.count({
+        where: { userId: user.id, isActive: true },
+      });
+
+      if (activeCount >= effectiveLimit) {
+        throw { status: 423, message: 'Límite de dispositivos alcanzado. Pide al administrador que revoque un dispositivo registrado.' };
+      }
+    }
+
+    // Upsert sesión de dispositivo
+    await prisma.deviceSession.upsert({
+      where: { userId_deviceId: { userId: user.id, deviceId } },
+      update: {
+        deviceName: deviceName || undefined,
+        platform: platform || undefined,
+        fcmToken: fcmToken || undefined,
+        isActive: true,
+      },
+      create: {
+        userId: user.id,
+        deviceId,
+        deviceName,
+        platform,
+        fcmToken,
+        isActive: true,
+      },
+    });
   }
 
   const tenants = user.tenants
@@ -112,9 +166,21 @@ async function changePassword(userId, currentPassword, newPassword) {
   await prisma.user.update({ where: { id: userId }, data: { passwordHash, mustChangePassword: false } });
 }
 
-async function updateFCMToken(userId, token) {
+async function updateFCMToken(userId, deviceId, token) {
   const value = token && token.trim() !== '' ? token : null;
-  await prisma.user.update({ where: { id: userId }, data: { fcmToken: value } });
+  if (deviceId) {
+    // Actualizar token solo en la sesión del dispositivo que lo solicita
+    await prisma.deviceSession.updateMany({
+      where: { userId, deviceId },
+      data: { fcmToken: value },
+    });
+  } else {
+    // Retrocompatibilidad: actualizar todos los dispositivos activos del usuario
+    await prisma.deviceSession.updateMany({
+      where: { userId, isActive: true },
+      data: { fcmToken: value },
+    });
+  }
 }
 
 async function getMe(userId) {

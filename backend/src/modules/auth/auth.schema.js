@@ -3,6 +3,10 @@ const { z } = require('zod');
 const loginSchema = z.object({
   email: z.string().email('Email inválido'),
   password: z.string().min(6, 'Mínimo 6 caracteres'),
+  deviceId: z.string().max(128).optional(),
+  deviceName: z.string().max(128).optional(),
+  platform: z.enum(['android', 'ios', 'web']).optional(),
+  fcmToken: z.string().max(512).optional(),
 });
 
 const registerSchema = z.object({
