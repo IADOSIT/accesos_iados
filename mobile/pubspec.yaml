@@ -63,8 +63,8 @@ dependencies:
   # Info del dispositivo (nombre del modelo para sesiones)
   device_info_plus: ^10.1.0
 
-  # Iconos de marca (WhatsApp, etc.)
-  font_awesome_flutter: ^10.7.0
+  # SVG rendering (iconos de marca, etc.)
+  flutter_svg: ^2.0.10+1
 
   # Firebase — Notificaciones Push
   firebase_core: ^3.6.0
@@ -84,4 +84,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/icons/
     - logo3_ia2.png

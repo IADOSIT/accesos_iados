@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors_scheme.dart';
 
@@ -72,7 +72,7 @@ class AdvertisingDetailScreen extends StatelessWidget {
                     ),
                   if (whatsapp.isNotEmpty || phone.isNotEmpty)
                     _ActionTile(
-                      faIcon: FontAwesomeIcons.whatsapp,
+                      svgAsset: 'assets/icons/whatsapp.svg',
                       label: 'WhatsApp',
                       subtitle: whatsapp.isNotEmpty ? whatsapp : phone,
                       color: const Color(0xFF25D366),
@@ -120,7 +120,7 @@ class AdvertisingDetailScreen extends StatelessWidget {
 
 class _ActionTile extends StatelessWidget {
   final IconData? icon;
-  final IconData? faIcon;
+  final String? svgAsset;
   final String label;
   final String subtitle;
   final Color color;
@@ -128,7 +128,7 @@ class _ActionTile extends StatelessWidget {
 
   const _ActionTile({
     this.icon,
-    this.faIcon,
+    this.svgAsset,
     required this.label,
     required this.subtitle,
     required this.color,
@@ -156,8 +156,8 @@ class _ActionTile extends StatelessWidget {
                 color: color.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: faIcon != null
-                  ? FaIcon(faIcon!, color: color, size: 20)
+              child: svgAsset != null
+                  ? SvgPicture.asset(svgAsset!, colorFilter: ColorFilter.mode(color, BlendMode.srcIn), width: 20, height: 20)
                   : Icon(icon!, color: color, size: 20),
             ),
             const SizedBox(width: 14),
