@@ -1137,7 +1137,8 @@ class _PanicButtonState extends ConsumerState<_PanicButton> {
     try {
       final api = ref.read(apiClientProvider);
       final res = await api.post('/access/panic', data: {});
-      final cooldown = (res.data['data']?['cooldownSeconds'] as num?)?.toInt() ?? 300;
+      final resData = res.data['data'] as Map?;
+      final cooldown = (resData?['cooldownSeconds'] as num?)?.toInt() ?? 300;
       _startCooldown(cooldown);
 
       if (mounted) {
@@ -1145,11 +1146,11 @@ class _PanicButtonState extends ConsumerState<_PanicButton> {
         final auth = ref.read(authProvider);
         final config = ref.read(tenantConfigProvider).valueOrNull;
         final panicData = {
-          'userName': auth.displayName,
-          'unitLabel': '',
-          'phone': '',
-          'block': '',
-          'unitIdentifier': '',
+          'userName': resData?['userName'] ?? auth.displayName,
+          'unitLabel': resData?['unitLabel'] ?? '',
+          'phone': resData?['phone'] ?? '',
+          'block': resData?['block'] ?? '',
+          'unitIdentifier': resData?['unitIdentifier'] ?? '',
         };
         showGeneralDialog(
           context: context,

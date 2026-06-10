@@ -378,7 +378,14 @@ async function triggerPanic(userId, tenantId) {
   notif.sendUrgentToRole(tenantId, 'GUARD',    'PANIC', title, body, data);
   notif.sendUrgentToRole(tenantId, 'RESIDENT', 'PANIC', title, body, data);
 
-  return { cooldownSeconds: PANIC_COOLDOWN_MS / 1000 };
+  return {
+    cooldownSeconds: PANIC_COOLDOWN_MS / 1000,
+    userName,
+    unitLabel: unitLabel || '',
+    phone,
+    unitIdentifier: unitId_val,
+    block: block_val,
+  };
 }
 
 module.exports = { openGate, generateQR, getQRCodes, getLogs, revokeQR, cleanupExpiredQRs, createQuickQr, getPublicQR, triggerPanic };

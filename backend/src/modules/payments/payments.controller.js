@@ -23,6 +23,9 @@ async function createPayment(req, res) {
 async function getCharges(req, res) {
   const { page, limit, skip } = parsePagination(req.query);
   // RESIDENT solo ve cargos de su propia unidad
+  if (req.user.role === 'RESIDENT' && !req.user.unitId) {
+    return paginated(res, [], 0, page, limit);
+  }
   const unitId = req.user.role === 'RESIDENT'
     ? req.user.unitId
     : req.query.unitId;

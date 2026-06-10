@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors_scheme.dart';
 import '../../../core/network/api_client.dart';
@@ -253,7 +254,7 @@ class _EntryCard extends StatelessWidget {
                         color: const Color(0xFF25D366),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.chat_rounded, color: Colors.white, size: 20),
+                      child: const FaIcon(FontAwesomeIcons.whatsapp, color: Colors.white, size: 20),
                     ),
                   ),
                 GestureDetector(
@@ -290,7 +291,8 @@ class _EntryCard extends StatelessWidget {
 
   Future<void> _openWhatsApp(BuildContext context, String phone) async {
     if (phone.isEmpty) return;
-    final clean = phone.replaceAll(RegExp(r'[^\d]'), '');
+    String clean = phone.replaceAll(RegExp(r'[^\d]'), '');
+    if (clean.length == 10) clean = '52$clean';
     final uri = Uri.parse('https://wa.me/$clean');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);

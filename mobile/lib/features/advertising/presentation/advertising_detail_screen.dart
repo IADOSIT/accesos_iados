@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors_scheme.dart';
 
@@ -71,12 +72,13 @@ class AdvertisingDetailScreen extends StatelessWidget {
                     ),
                   if (whatsapp.isNotEmpty || phone.isNotEmpty)
                     _ActionTile(
-                      icon: Icons.chat_rounded,
+                      faIcon: FontAwesomeIcons.whatsapp,
                       label: 'WhatsApp',
                       subtitle: whatsapp.isNotEmpty ? whatsapp : phone,
                       color: const Color(0xFF25D366),
                       onTap: () {
-                        final clean = (whatsapp.isNotEmpty ? whatsapp : phone).replaceAll(RegExp(r'[^\d]'), '');
+                        String clean = (whatsapp.isNotEmpty ? whatsapp : phone).replaceAll(RegExp(r'[^\d]'), '');
+                        if (clean.length == 10) clean = '52$clean';
                         _launchUrl('https://wa.me/$clean');
                       },
                     ),
@@ -117,14 +119,16 @@ class AdvertisingDetailScreen extends StatelessWidget {
 }
 
 class _ActionTile extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final IconData? faIcon;
   final String label;
   final String subtitle;
   final Color color;
   final VoidCallback onTap;
 
   const _ActionTile({
-    required this.icon,
+    this.icon,
+    this.faIcon,
     required this.label,
     required this.subtitle,
     required this.color,
@@ -152,7 +156,9 @@ class _ActionTile extends StatelessWidget {
                 color: color.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: color, size: 20),
+              child: faIcon != null
+                  ? FaIcon(faIcon!, color: color, size: 20)
+                  : Icon(icon!, color: color, size: 20),
             ),
             const SizedBox(width: 14),
             Expanded(

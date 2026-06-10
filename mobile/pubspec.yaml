@@ -1,7 +1,7 @@
 name: acceso_digital
 description: "Acceso Digital - iaDoS | Control de Accesos Multitenant"
 publish_to: 'none'
-version: 1.2.0+13
+version: 1.2.1+14
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -62,6 +62,9 @@ dependencies:
 
   # Info del dispositivo (nombre del modelo para sesiones)
   device_info_plus: ^10.1.0
+
+  # Iconos de marca (WhatsApp, etc.)
+  font_awesome_flutter: ^10.7.0
 
   # Firebase — Notificaciones Push
   firebase_core: ^3.6.0
