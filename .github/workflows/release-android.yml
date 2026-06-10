@@ -72,7 +72,7 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
-          password: ${{ secrets.VPS_PASSWORD }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           script: mkdir -p /opt/iados/uploads/app-releases
 
       - name: Copiar APK al VPS
@@ -80,7 +80,7 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
-          password: ${{ secrets.VPS_PASSWORD }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           source: mobile/build/app/outputs/flutter-apk/app-release.apk
           target: /opt/iados/uploads/app-releases/
           strip_components: 5
@@ -91,7 +91,7 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
-          password: ${{ secrets.VPS_PASSWORD }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             mv -f /opt/iados/uploads/app-releases/app-release.apk \
                    /opt/iados/uploads/app-releases/acceso-digital.apk
@@ -106,16 +106,16 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
-          password: ${{ secrets.VPS_PASSWORD }}
+          key: ${{ secrets.VPS_SSH_KEY }}
           envs: APP_VER,APP_BUILD,APP_NOTES,APP_MANDATORY
           script: |
             cd /opt/iados
             DOWNLOAD_URL="https://accesodigitalapi.iados.mx/api/uploads/app-releases/acceso-digital.apk"
 
-            sed -i "s|APP_VERSION=.*|APP_VERSION=${APP_VER}|"               docker-compose.yml
-            sed -i "s|APP_BUILD_NUMBER=.*|APP_BUILD_NUMBER=${APP_BUILD}|"   docker-compose.yml
+            sed -i "s|APP_VERSION=.*|APP_VERSION=${APP_VER}|"                docker-compose.yml
+            sed -i "s|APP_BUILD_NUMBER=.*|APP_BUILD_NUMBER=${APP_BUILD}|"    docker-compose.yml
             sed -i "s|APP_DOWNLOAD_URL=.*|APP_DOWNLOAD_URL=${DOWNLOAD_URL}|" docker-compose.yml
-            sed -i "s|APP_RELEASE_NOTES=.*|APP_RELEASE_NOTES=${APP_NOTES}|" docker-compose.yml
+            sed -i "s|APP_RELEASE_NOTES=.*|APP_RELEASE_NOTES=${APP_NOTES}|"  docker-compose.yml
             sed -i "s|APP_UPDATE_MANDATORY=.*|APP_UPDATE_MANDATORY=${APP_MANDATORY}|" docker-compose.yml
 
             docker compose up -d --no-deps backend
