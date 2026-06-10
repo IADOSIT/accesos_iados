@@ -3,8 +3,16 @@ const fs   = require('fs');
 const prisma = require('../../config/database');
 
 async function list(tenantId, onlyActive = false) {
+  const now = new Date();
   return prisma.advertisement.findMany({
-    where: { tenantId, ...(onlyActive && { isActive: true }) },
+    where: {
+      tenantId,
+      ...(onlyActive && {
+        isActive: true,
+        OR: [{ startDate: null }, { startDate: { lte: now } }],
+        AND: [{ OR: [{ endDate: null }, { endDate: { gte: now } }] }],
+      }),
+    },
     orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
   });
 }

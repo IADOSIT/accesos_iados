@@ -10,7 +10,7 @@ import '../../../shared/providers/auth_provider.dart';
 
 final chargesProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
   final api = ref.watch(apiClientProvider);
-  final res = await api.get('/payments/charges', params: {'status': 'PENDING'});
+  final res = await api.get('/payments/charges', params: {'limit': '100'});
   return res.data['data'] as List? ?? [];
 });
 
@@ -81,40 +81,78 @@ class PaymentsScreen extends ConsumerWidget {
           ),
 
           // ── Lista de cargos ─────────────────────────────────────
-          if (charges.hasValue) ...[
-            if ((charges.valueOrNull ?? []).isEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 32),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.check_circle_outline_rounded, color: c.success, size: 48),
-                      const SizedBox(height: 12),
-                      Text('Sin cargos pendientes',
-                          style: TextStyle(color: c.textMuted, fontSize: 14)),
-                    ],
-                  ),
-                ),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (_, i) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _ChargeCard(
-                          charge: charges.valueOrNull![i], fmt: currencyFmt),
-                    ),
-                    childCount: charges.valueOrNull!.length,
-                  ),
-                ),
-              ),
-          ],
+          if (charges.hasValue)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+              sliver: _ChargesList(charges: charges.valueOrNull ?? [], fmt: currencyFmt, colors: c),
+            ),
         ],
       ),
     );
+  }
+}
+
+// ── Lista separada pendientes / pagados ────────────────────────────────────
+
+class _ChargesList extends StatelessWidget {
+  final List<dynamic> charges;
+  final NumberFormat fmt;
+  final AppColorsScheme colors;
+  const _ChargesList({required this.charges, required this.fmt, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = charges.where((c) => (c['status'] as String?) != 'PAID' && (c['status'] as String?) != 'CANCELLED').toList();
+    final paid    = charges.where((c) => (c['status'] as String?) == 'PAID').toList();
+
+    if (charges.isEmpty) {
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle_outline_rounded, color: colors.success, size: 48),
+              const SizedBox(height: 12),
+              Text('Sin cargos registrados', style: TextStyle(color: colors.textMuted, fontSize: 14)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final items = <Widget>[];
+
+    if (pending.isNotEmpty) {
+      items.add(Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 8),
+        child: Text('PENDIENTES', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: colors.textMuted, letterSpacing: 0.8)),
+      ));
+      for (final c in pending) {
+        items.add(Padding(padding: const EdgeInsets.only(bottom: 8), child: _ChargeCard(charge: c, fmt: fmt)));
+      }
+    } else {
+      items.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Row(children: [
+          Icon(Icons.check_circle_outline_rounded, color: colors.success, size: 18),
+          const SizedBox(width: 8),
+          Text('Sin cargos pendientes', style: TextStyle(color: colors.textMuted, fontSize: 13)),
+        ]),
+      ));
+    }
+
+    if (paid.isNotEmpty) {
+      items.add(Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 8),
+        child: Text('PAGADOS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: colors.success, letterSpacing: 0.8)),
+      ));
+      for (final c in paid) {
+        items.add(Padding(padding: const EdgeInsets.only(bottom: 8), child: _ChargeCard(charge: c, fmt: fmt)));
+      }
+    }
+
+    return SliverList(delegate: SliverChildBuilderDelegate((_, i) => items[i], childCount: items.length));
   }
 }
 
@@ -356,14 +394,20 @@ class _PaymentSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final pending = charges.where((ch) {
+      final status = ch['status'] as String? ?? '';
+      return status != 'PAID' && status != 'CANCELLED';
+    }).toList();
     double total = 0;
-    for (final charge in charges) {
+    for (final charge in pending) {
       try {
-        total += double.parse(charge['amount'].toString());
+        final amount = double.parse(charge['amount'].toString());
+        final paid = double.parse(charge['paidAmount']?.toString() ?? '0');
+        total += (amount - paid).clamp(0, double.infinity);
       } catch (_) {}
     }
 
-    if (charges.isEmpty) return const SizedBox.shrink();
+    if (pending.isEmpty) return const SizedBox.shrink();
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 16),
@@ -397,7 +441,7 @@ class _PaymentSummary extends StatelessWidget {
                 ),
               ),
               Text(
-                '${charges.length} cargo(s)',
+                '${pending.length} cargo(s) pendiente(s)',
                 style: const TextStyle(color: Colors.white60, fontSize: 12),
               ),
             ],

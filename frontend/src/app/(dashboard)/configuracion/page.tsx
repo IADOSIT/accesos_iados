@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '@/stores/auth';
-import { authApi, configApi, tenantsApi, devicesApi, serviceQrApi, saasApi, guiaAmarillaApi, advertisingApi } from '@/services/api';
+import { authApi, configApi, tenantsApi, devicesApi, serviceQrApi, saasApi, guiaAmarillaApi, advertisingApi, paymentsApi } from '@/services/api';
 import PageHeader from '@/components/ui/PageHeader';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -66,28 +66,32 @@ interface GuiaAmarillaEntry {
   name: string;
   category: string;
   phone: string;
+  whatsapp?: string;
   description?: string;
   emoji: string;
   isActive: boolean;
   order: number;
 }
 
-const EMPTY_GUIA: GuiaAmarillaEntry = { name: '', category: '', phone: '', description: '', emoji: '📞', isActive: true, order: 0 };
+const EMPTY_GUIA: GuiaAmarillaEntry = { name: '', category: '', phone: '', whatsapp: '', description: '', emoji: '📞', isActive: true, order: 0 };
 
 // ── Tipos Publicidad ────────────────────────────────────────────
 interface Advertisement {
   id?: string;
   businessName: string;
   phone?: string;
+  whatsapp?: string;
   address?: string;
   website?: string;
   description?: string;
   imageUrl?: string;
+  startDate?: string;
+  endDate?: string;
   isActive: boolean;
   order: number;
 }
 
-const EMPTY_AD: Advertisement = { businessName: '', phone: '', address: '', website: '', description: '', imageUrl: '', isActive: true, order: 0 };
+const EMPTY_AD: Advertisement = { businessName: '', phone: '', whatsapp: '', address: '', website: '', description: '', imageUrl: '', startDate: '', endDate: '', isActive: true, order: 0 };
 
 // ── Tipos QR Servicios ─────────────────────────────────────────
 interface ServiceQrConfig {
@@ -1026,6 +1030,11 @@ export default function ConfiguracionPage() {
   const [paymentMsg, setPaymentMsg] = useState('');
   const [paymentErr, setPaymentErr] = useState('');
   const [savingPayment, setSavingPayment] = useState(false);
+  const [genMonth, setGenMonth] = useState(new Date().getMonth() + 1);
+  const [genYear, setGenYear] = useState(new Date().getFullYear());
+  const [genLoading, setGenLoading] = useState(false);
+  const [genMsg, setGenMsg] = useState('');
+  const [genErr, setGenErr] = useState('');
 
   // ── Política de morosos ──
   const DEFAULT_DELINQUENT_POLICY = {
@@ -1282,6 +1291,20 @@ export default function ConfiguracionPage() {
     }
   };
 
+  const handleGenerateMonthly = async () => {
+    setGenLoading(true); setGenMsg(''); setGenErr('');
+    try {
+      const res: any = await paymentsApi.generateMonthly({ month: genMonth, year: genYear });
+      const { created, skipped } = res.data ?? res;
+      setGenMsg(`${created} cargo(s) creados, ${skipped} omitidos (ya existían).`);
+      setTimeout(() => setGenMsg(''), 6000);
+    } catch (err) {
+      setGenErr(err instanceof Error ? err.message : 'Error al generar');
+    } finally {
+      setGenLoading(false);
+    }
+  };
+
   const handleSaveDelinquentPolicy = async () => {
     setSavingDelinquent(true); setDelinquentMsg(''); setDelinquentErr('');
     try {
@@ -1389,11 +1412,13 @@ export default function ConfiguracionPage() {
   const handleSaveGuia = async () => {
     setSavingGuia(true); setGuiaMsg(''); setGuiaErr('');
     try {
+      const payload: any = { ...guiaForm };
+      if (!payload.whatsapp) payload.whatsapp = null;
       if (editingGuiaId) {
-        const res: any = await guiaAmarillaApi.update(editingGuiaId, guiaForm);
+        const res: any = await guiaAmarillaApi.update(editingGuiaId, payload);
         setGuiaEntries((e) => e.map((x) => x.id === editingGuiaId ? res.data : x));
       } else {
-        const res: any = await guiaAmarillaApi.create({ ...guiaForm, order: guiaEntries.length });
+        const res: any = await guiaAmarillaApi.create({ ...payload, order: guiaEntries.length });
         setGuiaEntries((e) => [...e, res.data]);
       }
       setGuiaMsg(editingGuiaId ? 'Entrada actualizada' : 'Entrada creada');
@@ -1418,7 +1443,11 @@ export default function ConfiguracionPage() {
 
   // ── Handlers Publicidad ──
   function resetAdForm() { setAdForm({ ...EMPTY_AD }); setEditingAdId(null); }
-  function startEditAd(entry: Advertisement) { setAdForm({ ...entry }); setEditingAdId(entry.id!); }
+  function startEditAd(entry: Advertisement) {
+    const toDateInput = (v?: string) => v ? v.slice(0, 10) : '';
+    setAdForm({ ...entry, startDate: toDateInput(entry.startDate), endDate: toDateInput(entry.endDate) });
+    setEditingAdId(entry.id!);
+  }
 
   const syncAdvertisingEnabled = async (entries: Advertisement[]) => {
     const hasActive = entries.some((e) => e.isActive);
@@ -1428,12 +1457,16 @@ export default function ConfiguracionPage() {
   const handleSaveAd = async () => {
     setSavingAd(true); setAdMsg(''); setAdErr('');
     try {
+      const payload: any = { ...adForm };
+      if (!payload.startDate) payload.startDate = null;
+      if (!payload.endDate) payload.endDate = null;
+      if (!payload.whatsapp) payload.whatsapp = null;
       let newEntries: Advertisement[];
       if (editingAdId) {
-        const res: any = await advertisingApi.update(editingAdId, adForm);
+        const res: any = await advertisingApi.update(editingAdId, payload);
         newEntries = adEntries.map((x) => x.id === editingAdId ? res.data : x);
       } else {
-        const res: any = await advertisingApi.create({ ...adForm, order: adEntries.length });
+        const res: any = await advertisingApi.create({ ...payload, order: adEntries.length });
         newEntries = [...adEntries, res.data];
       }
       setAdEntries(newEntries);
@@ -2057,6 +2090,39 @@ export default function ConfiguracionPage() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* ── Generar cargos del mes ── */}
+          <div className="glass-card">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-semibold text-slate-700">Generar cargos mensuales</h3>
+                <p className="text-sm text-slate-500 mt-0.5">Crea el cargo del mes para todas las unidades activas con la cuota configurada</p>
+              </div>
+            </div>
+            {genMsg && <div className="bg-green-50 text-green-600 text-sm px-4 py-2 rounded-xl mb-4">{genMsg}</div>}
+            {genErr && <div className="bg-red-50 text-red-600 text-sm px-4 py-2 rounded-xl mb-4">{genErr}</div>}
+            <div className="flex items-end gap-3">
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Mes</label>
+                <select className="input-field text-sm" value={genMonth} onChange={(e) => setGenMonth(Number(e.target.value))}>
+                  {['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'].map((m, i) => (
+                    <option key={i+1} value={i+1}>{m}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Año</label>
+                <select className="input-field text-sm" value={genYear} onChange={(e) => setGenYear(Number(e.target.value))}>
+                  {[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+              <button onClick={handleGenerateMonthly} disabled={genLoading} className="btn-primary text-sm disabled:opacity-60">
+                {genLoading ? 'Generando...' : 'Generar cargos'}
+              </button>
             </div>
           </div>
 
@@ -2687,6 +2753,9 @@ export default function ConfiguracionPage() {
               <input type="text" className="input-field" placeholder="Teléfono"
                 value={guiaForm.phone}
                 onChange={(e) => setGuiaForm((f) => ({ ...f, phone: e.target.value }))} />
+              <input type="text" className="input-field" placeholder="WhatsApp (opcional, ej. 5551234567)"
+                value={guiaForm.whatsapp || ''}
+                onChange={(e) => setGuiaForm((f) => ({ ...f, whatsapp: e.target.value }))} />
               <input type="text" className="input-field" placeholder="Descripción (opcional)"
                 value={guiaForm.description || ''}
                 onChange={(e) => setGuiaForm((f) => ({ ...f, description: e.target.value }))} />
@@ -2761,6 +2830,9 @@ export default function ConfiguracionPage() {
               <input type="text" className="input-field" placeholder="Teléfono"
                 value={adForm.phone || ''}
                 onChange={(e) => setAdForm((f) => ({ ...f, phone: e.target.value }))} />
+              <input type="text" className="input-field" placeholder="WhatsApp (opcional, ej. 5551234567)"
+                value={adForm.whatsapp || ''}
+                onChange={(e) => setAdForm((f) => ({ ...f, whatsapp: e.target.value }))} />
               <input type="text" className="input-field" placeholder="Dirección"
                 value={adForm.address || ''}
                 onChange={(e) => setAdForm((f) => ({ ...f, address: e.target.value }))} />
@@ -2770,6 +2842,18 @@ export default function ConfiguracionPage() {
               <input type="text" className="input-field" placeholder="Descripción"
                 value={adForm.description || ''}
                 onChange={(e) => setAdForm((f) => ({ ...f, description: e.target.value }))} />
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Válido desde (opcional)</label>
+                <input type="date" className="input-field text-sm"
+                  value={adForm.startDate || ''}
+                  onChange={(e) => setAdForm((f) => ({ ...f, startDate: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Válido hasta (opcional)</label>
+                <input type="date" className="input-field text-sm"
+                  value={adForm.endDate || ''}
+                  onChange={(e) => setAdForm((f) => ({ ...f, endDate: e.target.value }))} />
+              </div>
               {/* Imagen */}
               <div className="sm:col-span-2 flex items-center gap-3">
                 <label className="flex-1 cursor-pointer">

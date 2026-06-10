@@ -313,7 +313,7 @@ async function cleanupExpiredQRs() {
 }
 
 // ── Botón de pánico ────────────────────────────────────────────
-const PANIC_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutos
+const PANIC_COOLDOWN_MS = 3 * 60 * 1000; // 3 minutos
 
 async function triggerPanic(userId, tenantId) {
   // Cooldown: verificar si ya activó pánico en los últimos 5 minutos

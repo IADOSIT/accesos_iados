@@ -60,6 +60,7 @@ export const paymentsApi = {
   reconcile: (paymentIds: string[]) => POST('/payments/reconcile', { paymentIds }),
   delinquent: (params?: string) => GET(`/payments/delinquent${params ? `?${params}` : ''}`),
   bulkPayments: (data: unknown) => POST('/payments/bulk', data),
+  generateMonthly: (data: { month: number; year: number }) => POST('/payments/generate-monthly', data),
 };
 
 // ============ TENANTS (Super Admin) ============

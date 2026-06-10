@@ -41,7 +41,7 @@ export default function UsuariosPage() {
   const [showModal, setShowModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editRow, setEditRow] = useState<any>(null);
-  const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', phone: '', role: 'RESIDENT', tenantId: tenantId || '' });
+  const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', phone: '', role: 'RESIDENT', unitId: '', tenantId: tenantId || '' });
   const [editForm, setEditForm] = useState({ email: '', firstName: '', lastName: '', phone: '', role: 'RESIDENT', unitId: '', password: '' });
 
   // CSV import
@@ -86,9 +86,11 @@ export default function UsuariosPage() {
     try {
       const targetTenantId = isSuperAdmin ? form.tenantId : tenantId;
       if (!targetTenantId) { alert('Selecciona un fraccionamiento'); return; }
-      await api('/users', { method: 'POST', body: form, headers: { 'x-tenant-id': targetTenantId } });
+      const body: any = { ...form };
+      if (!body.unitId) delete body.unitId;
+      await api('/users', { method: 'POST', body, headers: { 'x-tenant-id': targetTenantId } });
       setShowModal(false);
-      setForm({ email: '', password: '', firstName: '', lastName: '', phone: '', role: 'RESIDENT', tenantId: tenantId || '' });
+      setForm({ email: '', password: '', firstName: '', lastName: '', phone: '', role: 'RESIDENT', unitId: '', tenantId: tenantId || '' });
       load();
     } catch (err) { alert(err instanceof Error ? err.message : 'Error'); }
   };
@@ -336,6 +338,13 @@ export default function UsuariosPage() {
                 <option value="ADMIN">Administrador</option>
               </select>
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Unidad asignada</label>
+            <select className="input-field" value={form.unitId} onChange={(e) => setForm({ ...form, unitId: e.target.value })}>
+              <option value="">— Sin unidad —</option>
+              {units.map((u: any) => <option key={u.id} value={u.id}>{u.identifier}{u.block ? ` — ${u.block}` : ''}</option>)}
+            </select>
           </div>
           {isSuperAdmin && (
             <div>

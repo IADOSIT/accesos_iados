@@ -175,12 +175,13 @@ class _EntryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c     = context.colors;
-    final emoji = entry['emoji'] as String? ?? '📞';
-    final name  = entry['name'] as String? ?? '';
-    final cat   = entry['category'] as String? ?? '';
-    final phone = entry['phone'] as String? ?? '';
-    final desc  = entry['description'] as String? ?? '';
+    final c        = context.colors;
+    final emoji    = entry['emoji'] as String? ?? '📞';
+    final name     = entry['name'] as String? ?? '';
+    final cat      = entry['category'] as String? ?? '';
+    final phone    = entry['phone'] as String? ?? '';
+    final whatsapp = entry['whatsapp'] as String? ?? '';
+    final desc     = entry['description'] as String? ?? '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -238,17 +239,35 @@ class _EntryCard extends StatelessWidget {
                 ],
               ),
             ),
-            // Botón llamar
-            GestureDetector(
-              onTap: () => _call(context, phone),
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: c.primary,
-                  borderRadius: BorderRadius.circular(12),
+            // Botones acción
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (whatsapp.isNotEmpty || phone.isNotEmpty)
+                  GestureDetector(
+                    onTap: () => _openWhatsApp(context, whatsapp.isNotEmpty ? whatsapp : phone),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF25D366),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.chat_rounded, color: Colors.white, size: 20),
+                    ),
+                  ),
+                GestureDetector(
+                  onTap: () => _call(context, phone),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: c.primary,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.phone_rounded, color: Colors.white, size: 20),
+                  ),
                 ),
-                child: const Icon(Icons.phone_rounded, color: Colors.white, size: 20),
-              ),
+              ],
             ),
           ],
         ),
@@ -265,6 +284,19 @@ class _EntryCard extends StatelessWidget {
     } else if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No se pudo abrir el marcador')),
+      );
+    }
+  }
+
+  Future<void> _openWhatsApp(BuildContext context, String phone) async {
+    if (phone.isEmpty) return;
+    final clean = phone.replaceAll(RegExp(r'[^\d]'), '');
+    final uri = Uri.parse('https://wa.me/$clean');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo abrir WhatsApp')),
       );
     }
   }

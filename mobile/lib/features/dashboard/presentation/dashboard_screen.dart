@@ -50,7 +50,9 @@ final advertisingProvider = FutureProvider.autoDispose<List<dynamic>>((ref) asyn
   final api = ref.watch(apiClientProvider);
   try {
     final res = await api.get('/advertising', params: {'active': 'true'});
-    return res.data['data'] as List? ?? [];
+    final list = List<dynamic>.from(res.data['data'] as List? ?? []);
+    list.shuffle();
+    return list;
   } catch (_) {
     return [];
   }

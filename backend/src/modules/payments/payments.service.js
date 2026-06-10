@@ -185,4 +185,37 @@ async function bulkPayments(tenantId, { month, year, payments }) {
   return { total: payments.length, charged, paid, pending, skipped, amount: totalAmount };
 }
 
-module.exports = { createCharge, createPayment, getCharges, getPayments, reconcile, getDelinquentUnits, bulkPayments };
+async function generateMonthlyCharges(tenantId, { month, year }) {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
+  const settings = (tenant?.settings && typeof tenant.settings === 'object') ? tenant.settings : {};
+  const pc = (settings.paymentConfig && typeof settings.paymentConfig === 'object') ? settings.paymentConfig : {};
+  const monthlyAmount = Number(pc.monthlyAmount) || 0;
+  if (monthlyAmount <= 0) throw { status: 400, message: 'Cuota mensual no configurada. Primero configúrala en Gestión de cobro.' };
+
+  const dueDayOfMonth = Number(pc.dueDayOfMonth) || 5;
+  const paymentConcept = pc.paymentConcept || 'Cuota de mantenimiento';
+  const monthName = new Date(year, month - 1, 1).toLocaleDateString('es-MX', { month: 'long' });
+  const description = `${paymentConcept} — ${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${year}`;
+  const dueDate = new Date(year, month - 1, dueDayOfMonth);
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
+
+  const units = await prisma.unit.findMany({ where: { tenantId, isActive: true }, select: { id: true } });
+
+  let created = 0, skipped = 0;
+  for (const unit of units) {
+    const existing = await prisma.charge.findFirst({
+      where: { tenantId, unitId: unit.id, type: 'MONTHLY', dueDate: { gte: monthStart, lte: monthEnd } },
+    });
+    if (existing) { skipped++; continue; }
+    await prisma.charge.create({
+      data: { tenantId, unitId: unit.id, type: 'MONTHLY', amount: monthlyAmount, description, dueDate, isRecurring: false, status: 'PENDING' },
+    });
+    created++;
+  }
+
+  if (created > 0) await unitsService.checkDelinquency(tenantId);
+  return { created, skipped, total: units.length };
+}
+
+module.exports = { createCharge, createPayment, getCharges, getPayments, reconcile, getDelinquentUnits, bulkPayments, generateMonthlyCharges };

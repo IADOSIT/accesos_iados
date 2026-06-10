@@ -10,12 +10,13 @@ class AdvertisingDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c           = context.colors;
-    final imageUrl    = ad['imageUrl']    as String? ?? '';
+    final imageUrl     = ad['imageUrl']     as String? ?? '';
     final businessName = ad['businessName'] as String? ?? '';
-    final phone       = ad['phone']       as String? ?? '';
-    final address     = ad['address']     as String? ?? '';
-    final website     = ad['website']     as String? ?? '';
-    final description = ad['description'] as String? ?? '';
+    final phone        = ad['phone']        as String? ?? '';
+    final whatsapp     = ad['whatsapp']     as String? ?? '';
+    final address      = ad['address']      as String? ?? '';
+    final website      = ad['website']      as String? ?? '';
+    final description  = ad['description']  as String? ?? '';
 
     return Scaffold(
       backgroundColor: c.bgMain,
@@ -67,6 +68,17 @@ class AdvertisingDetailScreen extends StatelessWidget {
                       subtitle: phone,
                       color: Colors.green,
                       onTap: () => _launchUrl('tel:${phone.replaceAll(RegExp(r'[^\d+]'), '')}'),
+                    ),
+                  if (whatsapp.isNotEmpty || phone.isNotEmpty)
+                    _ActionTile(
+                      icon: Icons.chat_rounded,
+                      label: 'WhatsApp',
+                      subtitle: whatsapp.isNotEmpty ? whatsapp : phone,
+                      color: const Color(0xFF25D366),
+                      onTap: () {
+                        final clean = (whatsapp.isNotEmpty ? whatsapp : phone).replaceAll(RegExp(r'[^\d]'), '');
+                        _launchUrl('https://wa.me/$clean');
+                      },
                     ),
                   if (address.isNotEmpty)
                     _ActionTile(

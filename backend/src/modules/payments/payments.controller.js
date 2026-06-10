@@ -65,4 +65,14 @@ async function bulkPayments(req, res) {
   }
 }
 
-module.exports = { createCharge, createPayment, getCharges, getPayments, reconcile, getDelinquent, bulkPayments };
+async function generateMonthlyCharges(req, res) {
+  try {
+    const { month, year } = req.body;
+    const result = await svc.generateMonthlyCharges(req.tenantId, { month: Number(month), year: Number(year) });
+    return success(res, result, `${result.created} cargo(s) generados`);
+  } catch (err) {
+    return error(res, err.message, err.status || 500);
+  }
+}
+
+module.exports = { createCharge, createPayment, getCharges, getPayments, reconcile, getDelinquent, bulkPayments, generateMonthlyCharges };

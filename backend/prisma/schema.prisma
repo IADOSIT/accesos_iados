@@ -514,6 +514,7 @@ model GuiaAmarillaEntry {
   name        String
   category    String
   phone       String
+  whatsapp    String?
   description String?
   emoji       String   @default("📞")
   isActive    Boolean  @default(true)
@@ -536,10 +537,13 @@ model Advertisement {
   tenantId     String
   businessName String
   phone        String?
+  whatsapp     String?
   address      String?
   website      String?
   description  String?
   imageUrl     String?
+  startDate    DateTime?
+  endDate      DateTime?
   isActive     Boolean  @default(true)
   order        Int      @default(0)
   createdAt    DateTime @default(now())
