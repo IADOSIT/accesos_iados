@@ -1709,26 +1709,6 @@ export default function ConfiguracionPage() {
             </div>
           )}
 
-          {/* Selector de tenant — Admin multi-tenant */}
-          {!isSuperAdmin && user && user.tenants.length > 1 && (
-            <div className="glass-card">
-              <h3 className="font-semibold text-slate-700 mb-4">Fraccionamiento activo</h3>
-              <div className="space-y-2">
-                {user.tenants.map((t) => (
-                  <button key={t.tenantId} onClick={() => setTenant(t.tenantId)}
-                    className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
-                      tenantId === t.tenantId
-                        ? 'border-primary-400 bg-primary-50 text-primary-700'
-                        : 'border-slate-200 hover:border-slate-300'
-                    }`}>
-                    <p className="font-medium">{t.tenantName}</p>
-                    <p className="text-xs text-slate-500">{t.role}</p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* Cambiar contraseña */}
           <div className="glass-card">
             <h3 className="font-semibold text-slate-700 mb-4">Cambiar contraseña</h3>

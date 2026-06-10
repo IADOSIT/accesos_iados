@@ -177,8 +177,8 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Tenant switcher */}
-      {switcherOptions.length > 1 ? (
+      {/* Tenant switcher — solo SuperAdmin puede cambiar de fraccionamiento */}
+      {isSuperAdmin && switcherOptions.length > 1 ? (
         <div className="mx-3 mb-3">
           <p className="px-1 mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fraccionamiento</p>
           <select

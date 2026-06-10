@@ -70,9 +70,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   setTenant: (tenantId) => {
-    localStorage.setItem('tenantId', tenantId);
     const user = get().user;
-    const tenant = user?.tenants.find(t => t.tenantId === tenantId);
+    // Solo SuperAdmin puede cambiar de fraccionamiento
+    if (!user?.isSuperAdmin) return;
+    localStorage.setItem('tenantId', tenantId);
+    const tenant = user.tenants.find(t => t.tenantId === tenantId);
     set({ tenantId, role: tenant?.role || null });
   },
 
