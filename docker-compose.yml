@@ -21,6 +21,11 @@ services:
       - PORTAL_URL=https://accesodigital.iados.mx
       - BACKEND_PUBLIC_URL=https://accesodigitalapi.iados.mx
       - FIREBASE_SERVICE_ACCOUNT_JSON=${FIREBASE_SERVICE_ACCOUNT_JSON}
+      - APP_VERSION=1.1.5
+      - APP_BUILD_NUMBER=8
+      - APP_DOWNLOAD_URL=
+      - APP_RELEASE_NOTES=
+      - APP_UPDATE_MANDATORY=false
     volumes:
       - ./uploads:/app/uploads
     command: sh -c "npx prisma db push --accept-data-loss; npm start"

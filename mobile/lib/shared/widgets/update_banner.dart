@@ -50,11 +50,18 @@ final appVersionProvider = FutureProvider.autoDispose<AppVersionInfo>((ref) asyn
   }
 });
 
-class UpdateBanner extends ConsumerWidget {
+class UpdateBanner extends ConsumerStatefulWidget {
   const UpdateBanner({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<UpdateBanner> createState() => _UpdateBannerState();
+}
+
+class _UpdateBannerState extends ConsumerState<UpdateBanner> {
+  bool _dialogShown = false;
+
+  @override
+  Widget build(BuildContext context) {
     final versionAsync = ref.watch(appVersionProvider);
 
     return versionAsync.when(
@@ -62,6 +69,14 @@ class UpdateBanner extends ConsumerWidget {
       error: (_, __) => const SizedBox.shrink(),
       data: (info) {
         if (!info.hasUpdate) return const SizedBox.shrink();
+
+        // Mandatory: bloquear con diálogo persistente
+        if (info.mandatory && !_dialogShown) {
+          _dialogShown = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showMandatoryDialog(context, info);
+          });
+        }
 
         final c = context.colors;
         return GestureDetector(
@@ -104,6 +119,37 @@ class UpdateBanner extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+
+  void _showMandatoryDialog(BuildContext context, AppVersionInfo info) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: const Text('Actualización requerida'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('La versión ${info.version} es obligatoria. Debes actualizar para continuar.'),
+              if (info.releaseNotes.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(info.releaseNotes, style: const TextStyle(fontSize: 13)),
+              ],
+            ],
+          ),
+          actions: [
+            FilledButton.icon(
+              onPressed: () => _openDownload(info.downloadUrl),
+              icon: const Icon(Icons.download_rounded),
+              label: const Text('Descargar ahora'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
