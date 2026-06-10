@@ -35,6 +35,19 @@ if (env.FIREBASE_KEY_PATH || env.FIREBASE_SERVICE_ACCOUNT_JSON) {
   console.log('[FCM] Sin configuración — notificaciones push desactivadas');
 }
 
+async function _clearInvalidToken(fcmToken) {
+  try {
+    await prisma.user.updateMany({ where: { fcmToken }, data: { fcmToken: null } });
+    console.log('[FCM] Token inválido limpiado de BD');
+  } catch (_) {}
+}
+
+function _isInvalidTokenError(err) {
+  return err.code === 'messaging/registration-token-not-registered'
+    || err.code === 'messaging/invalid-registration-token'
+    || (err.message && err.message.includes('Requested entity was not found'));
+}
+
 async function _send(fcmToken, title, body, data, type) {
   if (!messaging || !fcmToken) return;
   try {
@@ -51,7 +64,8 @@ async function _send(fcmToken, title, body, data, type) {
       },
     });
   } catch (err) {
-    console.error('[FCM] Error enviando push:', err.message);
+    if (_isInvalidTokenError(err)) await _clearInvalidToken(fcmToken);
+    else console.error('[FCM] Error enviando push:', err.message);
   }
 }
 
@@ -135,7 +149,8 @@ async function _sendUrgent(fcmToken, title, body, data) {
       },
     });
   } catch (err) {
-    console.error('[FCM] Error enviando push urgente:', err.message);
+    if (_isInvalidTokenError(err)) await _clearInvalidToken(fcmToken);
+    else console.error('[FCM] Error enviando push urgente:', err.message);
   }
 }
 
@@ -168,7 +183,8 @@ async function _sendServiceRequestPush(fcmToken, title, body, data) {
       },
     });
   } catch (err) {
-    console.error('[FCM] Error enviando SERVICE_REQUEST push:', err.message);
+    if (_isInvalidTokenError(err)) await _clearInvalidToken(fcmToken);
+    else console.error('[FCM] Error enviando SERVICE_REQUEST push:', err.message);
   }
 }
 
