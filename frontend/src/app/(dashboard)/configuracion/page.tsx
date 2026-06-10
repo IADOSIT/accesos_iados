@@ -1138,9 +1138,13 @@ export default function ConfiguracionPage() {
   // ── Cargar Publicidad cuando se entra al tab ──
   useEffect(() => {
     if (tab !== 'publicidad' || !tenantId || !canManage || adLoaded) return;
-    advertisingApi.list().then((res: any) => {
-      setAdEntries(res.data || []);
+    advertisingApi.list().then(async (res: any) => {
+      const entries = res.data || [];
+      setAdEntries(entries);
       setAdLoaded(true);
+      // Sincronizar advertisingConfig.enabled según anuncios activos existentes
+      const hasActive = entries.some((e: any) => e.isActive);
+      await configApi.updateTenant({ advertisingConfig: { enabled: hasActive } }).catch(() => {});
     }).catch(() => {});
   }, [tab, tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1393,16 +1397,24 @@ export default function ConfiguracionPage() {
   function resetAdForm() { setAdForm({ ...EMPTY_AD }); setEditingAdId(null); }
   function startEditAd(entry: Advertisement) { setAdForm({ ...entry }); setEditingAdId(entry.id!); }
 
+  const syncAdvertisingEnabled = async (entries: Advertisement[]) => {
+    const hasActive = entries.some((e) => e.isActive);
+    await configApi.updateTenant({ advertisingConfig: { enabled: hasActive } }).catch(() => {});
+  };
+
   const handleSaveAd = async () => {
     setSavingAd(true); setAdMsg(''); setAdErr('');
     try {
+      let newEntries: Advertisement[];
       if (editingAdId) {
         const res: any = await advertisingApi.update(editingAdId, adForm);
-        setAdEntries((e) => e.map((x) => x.id === editingAdId ? res.data : x));
+        newEntries = adEntries.map((x) => x.id === editingAdId ? res.data : x);
       } else {
         const res: any = await advertisingApi.create({ ...adForm, order: adEntries.length });
-        setAdEntries((e) => [...e, res.data]);
+        newEntries = [...adEntries, res.data];
       }
+      setAdEntries(newEntries);
+      await syncAdvertisingEnabled(newEntries);
       setAdMsg(editingAdId ? 'Anuncio actualizado' : 'Anuncio creado');
       resetAdForm();
       setTimeout(() => setAdMsg(''), 3000);
@@ -1414,13 +1426,17 @@ export default function ConfiguracionPage() {
   const handleDeleteAd = async (id: string) => {
     if (!confirm('¿Eliminar este anuncio?')) return;
     await advertisingApi.remove(id).catch(() => {});
-    setAdEntries((e) => e.filter((x) => x.id !== id));
+    const newEntries = adEntries.filter((x) => x.id !== id);
+    setAdEntries(newEntries);
+    await syncAdvertisingEnabled(newEntries);
   };
 
   const handleToggleAd = async (entry: Advertisement) => {
     const updated = { ...entry, isActive: !entry.isActive };
     await advertisingApi.update(entry.id!, updated).catch(() => {});
-    setAdEntries((e) => e.map((x) => x.id === entry.id ? updated : x));
+    const newEntries = adEntries.map((x) => x.id === entry.id ? updated : x);
+    setAdEntries(newEntries);
+    await syncAdvertisingEnabled(newEntries);
   };
 
   const handleUploadAdImage = async (e: React.ChangeEvent<HTMLInputElement>) => {

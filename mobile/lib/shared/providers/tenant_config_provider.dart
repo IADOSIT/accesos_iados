@@ -216,7 +216,7 @@ class TenantConfig {
     this.emergencyContacts = const [],
     this.serviceQrConfig = const ServiceQrConfig(),
     this.guiaAmarillaEnabled = false,
-    this.advertisingEnabled = false,
+    this.advertisingEnabled = true,
     this.dashboardConfig = const [],
     this.dashboardsHome = const [],
   });
@@ -284,7 +284,7 @@ class TenantConfig {
       emergencyContacts:        rawContacts,
       serviceQrConfig:          svcQr,
       guiaAmarillaEnabled:      guiaAmarillaCfg['enabled'] as bool? ?? false,
-      advertisingEnabled:       advertisingCfg['enabled']  as bool? ?? false,
+      advertisingEnabled:       advertisingCfg['enabled']  as bool? ?? true,
       dashboardConfig:          rawDashboards,
       dashboardsHome:           rawDashboardsHome,
     );
