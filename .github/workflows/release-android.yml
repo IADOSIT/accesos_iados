@@ -118,6 +118,7 @@ jobs:
             sed -i "s|APP_RELEASE_NOTES=.*|APP_RELEASE_NOTES=${APP_NOTES}|"  docker-compose.yml
             sed -i "s|APP_UPDATE_MANDATORY=.*|APP_UPDATE_MANDATORY=${APP_MANDATORY}|" docker-compose.yml
 
+            docker rm -f iados-api 2>/dev/null || true
             docker compose up -d --no-deps backend
             echo "Versión ${APP_VER}+${APP_BUILD} publicada correctamente"
 
