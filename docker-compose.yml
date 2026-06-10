@@ -3,6 +3,7 @@ version: '3.8'
 services:
   backend:
     build: ./backend
+    container_name: iados-api
     ports:
       - "3004:3001"
     environment:
@@ -45,6 +46,7 @@ services:
       context: ./frontend
       args:
         - NEXT_PUBLIC_API_URL=https://accesodigitalapi.iados.mx/api
+    container_name: iados-web
     ports:
       - "3005:3002"
     environment:
