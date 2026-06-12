@@ -1,0 +1,28 @@
+name: Insertar datos de demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      tenant_slug:
+        description: 'Slug del tenant (dejar vacío para auto-detectar si solo hay uno)'
+        required: false
+        default: ''
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ejecutar seed-demo en VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd /opt/iados
+            SLUG="${{ github.event.inputs.tenant_slug }}"
+            if [ -n "$SLUG" ]; then
+              docker compose exec -T backend node scripts/seed-demo.js "$SLUG"
+            else
+              docker compose exec -T backend node scripts/seed-demo.js
+            fi
