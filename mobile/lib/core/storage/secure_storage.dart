@@ -120,5 +120,9 @@ class SecureStorage {
     return token != null && tenantId != null;
   }
 
-  Future<void> clear() => _deleteAll();
+  Future<void> clear() async {
+    final deviceId = await getDeviceId();
+    await _deleteAll();
+    if (deviceId != null) await saveDeviceId(deviceId);
+  }
 }

@@ -1,7 +1,7 @@
 name: acceso_digital
 description: "Acceso Digital - iaDoS | Control de Accesos Multitenant"
 publish_to: 'none'
-version: 1.2.1+15
+version: 1.2.2+16
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
