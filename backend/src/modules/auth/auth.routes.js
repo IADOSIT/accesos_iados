@@ -12,5 +12,6 @@ router.post('/refresh', ctrl.refresh);
 router.get('/me', authenticate, ctrl.me);
 router.put('/change-password', authenticate, validate(changePasswordSchema), ctrl.changePassword);
 router.put('/fcm-token', authenticate, ctrl.updateFCMToken);
+router.get('/my-devices', authenticate, ctrl.myDevices);
 
 module.exports = router;

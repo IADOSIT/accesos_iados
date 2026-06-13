@@ -17,6 +17,12 @@ const additionalChargeSchema = z.object({
   description: z.string().optional(),
 });
 
+const devicePlanSchema = z.object({
+  label: z.string().min(1, 'Nombre del plan requerido'),
+  maxDevices: z.number().int().min(1),
+  monthlyAmount: z.number().min(0),
+});
+
 const paymentConfigSchema = z.object({
   monthlyAmount: z.number().min(0).optional(),
   currency: z.string().optional(),
@@ -25,6 +31,7 @@ const paymentConfigSchema = z.object({
   gracePeriodDays: z.number().int().min(0).max(30).optional(),
   bankAccounts: z.array(bankAccountSchema).optional(),
   additionalCharges: z.array(additionalChargeSchema).optional(),
+  devicePlans: z.array(devicePlanSchema).optional(),
 }).optional();
 
 // ── Emergency numbers ───────────────────────────────────────────

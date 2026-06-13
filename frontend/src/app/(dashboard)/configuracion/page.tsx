@@ -22,6 +22,12 @@ interface AdditionalCharge {
   description: string;
 }
 
+interface DevicePlan {
+  label: string;
+  maxDevices: number;
+  monthlyAmount: number;
+}
+
 interface PaymentConfig {
   monthlyAmount: number;
   currency: string;
@@ -30,6 +36,7 @@ interface PaymentConfig {
   gracePeriodDays: number;
   bankAccounts: BankAccount[];
   additionalCharges: AdditionalCharge[];
+  devicePlans: DevicePlan[];
 }
 
 const DEFAULT_PAYMENT_CFG: PaymentConfig = {
@@ -40,7 +47,10 @@ const DEFAULT_PAYMENT_CFG: PaymentConfig = {
   gracePeriodDays: 5,
   bankAccounts: [],
   additionalCharges: [],
+  devicePlans: [],
 };
+
+const EMPTY_DEVICE_PLAN: DevicePlan = { label: '', maxDevices: 1, monthlyAmount: 0 };
 
 const EMPTY_BANK_ACCOUNT: BankAccount = {
   bankName: '', accountHolder: '', clabe: '', accountNumber: '', referenceTemplate: '',
@@ -1346,6 +1356,20 @@ export default function ConfiguracionPage() {
     setPaymentCfg((p) => ({ ...p, additionalCharges: p.additionalCharges.filter((_, i) => i !== idx) }));
   }
 
+  function addDevicePlan() {
+    setPaymentCfg((p) => ({ ...p, devicePlans: [...(p.devicePlans ?? []), { ...EMPTY_DEVICE_PLAN }] }));
+  }
+  function updateDevicePlan(idx: number, field: keyof DevicePlan, value: string | number) {
+    setPaymentCfg((p) => {
+      const plans = [...(p.devicePlans ?? [])];
+      plans[idx] = { ...plans[idx], [field]: value };
+      return { ...p, devicePlans: plans };
+    });
+  }
+  function removeDevicePlan(idx: number) {
+    setPaymentCfg((p) => ({ ...p, devicePlans: (p.devicePlans ?? []).filter((_, i) => i !== idx) }));
+  }
+
   // ── Handlers SaaS ──
   const handleSaveSaasConfig = async () => {
     setSavingSaas(true); setSaasCfgMsg(''); setSaasCfgErr('');
@@ -2070,6 +2094,60 @@ export default function ConfiguracionPage() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* ── Planes por dispositivos ── */}
+          <div className="glass-card">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h3 className="font-semibold text-slate-700">Planes por dispositivos</h3>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Define tarifas según el número de dispositivos registrados. Si no configuras planes, se usa la cuota mensual fija.
+                </p>
+              </div>
+              <button onClick={addDevicePlan} className="btn-primary text-sm">+ Agregar plan</button>
+            </div>
+            <div className="mt-4 space-y-3">
+              {(paymentCfg.devicePlans ?? []).length === 0 ? (
+                <div className="text-center py-6 text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                  <p className="text-sm">Sin planes configurados — se usa la cuota mensual fija</p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wide px-1">
+                    <span className="col-span-4">Nombre del plan</span>
+                    <span className="col-span-3">Hasta N dispositivos</span>
+                    <span className="col-span-3">Precio / mes</span>
+                    <span className="col-span-2"></span>
+                  </div>
+                  {(paymentCfg.devicePlans ?? []).map((plan, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center border border-slate-200 rounded-xl p-3 bg-white/60">
+                      <div className="col-span-4">
+                        <input type="text" className="input-field text-sm" placeholder="ej. Básico"
+                          value={plan.label} onChange={(e) => updateDevicePlan(idx, 'label', e.target.value)} />
+                      </div>
+                      <div className="col-span-3">
+                        <input type="number" min={1} max={20} className="input-field text-sm" placeholder="1"
+                          value={plan.maxDevices || ''} onChange={(e) => updateDevicePlan(idx, 'maxDevices', parseInt(e.target.value) || 1)} />
+                      </div>
+                      <div className="col-span-3">
+                        <input type="number" min={0} step={0.01} className="input-field text-sm" placeholder="0.00"
+                          value={plan.monthlyAmount || ''} onChange={(e) => updateDevicePlan(idx, 'monthlyAmount', parseFloat(e.target.value) || 0)} />
+                      </div>
+                      <div className="col-span-2 flex justify-end">
+                        <button onClick={() => removeDevicePlan(idx)} className="text-xs text-red-500 hover:text-red-700 font-medium">Eliminar</button>
+                      </div>
+                    </div>
+                  ))}
+                  <p className="text-xs text-slate-400 mt-1">Al generar cargos mensuales, se aplica el plan con menor precio que cubra los dispositivos registrados de cada casa.</p>
+                </>
+              )}
+            </div>
+            <div className="flex justify-end mt-4">
+              <button onClick={handleSavePaymentConfig} disabled={savingPayment} className="btn-primary text-sm disabled:opacity-60">
+                {savingPayment ? 'Guardando...' : 'Guardar planes'}
+              </button>
             </div>
           </div>
 

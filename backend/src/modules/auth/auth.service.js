@@ -218,4 +218,12 @@ async function getMe(userId) {
   };
 }
 
-module.exports = { login, register, refreshAccessToken, changePassword, updateFCMToken, getMe };
+async function getMyDevices(userId) {
+  return prisma.deviceSession.findMany({
+    where: { userId, isActive: true },
+    select: { id: true, deviceId: true, deviceName: true, platform: true, lastSeenAt: true, createdAt: true },
+    orderBy: { lastSeenAt: 'desc' },
+  });
+}
+
+module.exports = { login, register, refreshAccessToken, changePassword, updateFCMToken, getMe, getMyDevices };

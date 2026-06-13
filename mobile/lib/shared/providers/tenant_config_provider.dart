@@ -74,6 +74,24 @@ class AdditionalCharge {
   );
 }
 
+class DevicePlan {
+  final String label;
+  final int maxDevices;
+  final double monthlyAmount;
+
+  const DevicePlan({
+    required this.label,
+    required this.maxDevices,
+    required this.monthlyAmount,
+  });
+
+  factory DevicePlan.fromJson(Map<String, dynamic> j) => DevicePlan(
+    label: j['label'] as String? ?? '',
+    maxDevices: (j['maxDevices'] as num?)?.toInt() ?? 1,
+    monthlyAmount: (j['monthlyAmount'] as num?)?.toDouble() ?? 0,
+  );
+}
+
 class PaymentConfig {
   final double monthlyAmount;
   final String currency;
@@ -82,6 +100,7 @@ class PaymentConfig {
   final int gracePeriodDays;
   final List<BankAccount> bankAccounts;
   final List<AdditionalCharge> additionalCharges;
+  final List<DevicePlan> devicePlans;
 
   const PaymentConfig({
     this.monthlyAmount = 0,
@@ -91,6 +110,7 @@ class PaymentConfig {
     this.gracePeriodDays = 5,
     this.bankAccounts = const [],
     this.additionalCharges = const [],
+    this.devicePlans = const [],
   });
 
   factory PaymentConfig.fromJson(Map<String, dynamic> j) {
@@ -100,6 +120,9 @@ class PaymentConfig {
     final charges = (j['additionalCharges'] as List?)
         ?.map((e) => AdditionalCharge.fromJson(e as Map<String, dynamic>))
         .toList() ?? [];
+    final plans = (j['devicePlans'] as List?)
+        ?.map((e) => DevicePlan.fromJson(e as Map<String, dynamic>))
+        .toList() ?? [];
     return PaymentConfig(
       monthlyAmount: (j['monthlyAmount'] as num?)?.toDouble() ?? 0,
       currency: j['currency'] as String? ?? 'MXN',
@@ -108,10 +131,12 @@ class PaymentConfig {
       gracePeriodDays: (j['gracePeriodDays'] as num?)?.toInt() ?? 5,
       bankAccounts: accounts,
       additionalCharges: charges,
+      devicePlans: plans,
     );
   }
 
-  bool get hasInfo => bankAccounts.isNotEmpty || monthlyAmount > 0;
+  bool get hasInfo => bankAccounts.isNotEmpty || monthlyAmount > 0 || devicePlans.isNotEmpty;
+  bool get hasDevicePlans => devicePlans.isNotEmpty;
 }
 
 // ── Dashboard Item ──────────────────────────────────────────────────────────

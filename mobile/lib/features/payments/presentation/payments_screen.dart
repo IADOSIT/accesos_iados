@@ -14,6 +14,12 @@ final chargesProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
   return res.data['data'] as List? ?? [];
 });
 
+final myDevicesProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
+  final api = ref.watch(apiClientProvider);
+  final res = await api.get('/auth/my-devices');
+  return res.data['data'] as List? ?? [];
+});
+
 class PaymentsScreen extends ConsumerWidget {
   const PaymentsScreen({super.key});
 
@@ -21,6 +27,7 @@ class PaymentsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final charges = ref.watch(chargesProvider);
+    final devices = ref.watch(myDevicesProvider);
     final paymentCfg = ref.watch(tenantConfigProvider).valueOrNull?.paymentConfig;
     final tenantName = ref.watch(authProvider).tenantName ?? '';
     final currencyFmt = NumberFormat.currency(locale: 'es_MX', symbol: '\$');
@@ -32,15 +39,28 @@ class PaymentsScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
-            onPressed: () => ref.invalidate(chargesProvider),
+            onPressed: () {
+              ref.invalidate(chargesProvider);
+              ref.invalidate(myDevicesProvider);
+            },
           ),
         ],
       ),
       body: CustomScrollView(
         slivers: [
 
+          // ── Plan de dispositivos ────────────────────────────────
+          if (paymentCfg != null && paymentCfg.devicePlans.isNotEmpty)
+            SliverToBoxAdapter(
+              child: _DevicePlanSection(
+                cfg: paymentCfg,
+                devices: devices.valueOrNull ?? [],
+                fmt: currencyFmt,
+              ),
+            ),
+
           // ── Cómo pagar ──────────────────────────────────────────
-          if (paymentCfg != null && paymentCfg.hasInfo)
+          if (paymentCfg != null && paymentCfg.bankAccounts.isNotEmpty)
             SliverToBoxAdapter(
               child: _PaymentMethodsSection(
                 cfg: paymentCfg,
@@ -49,7 +69,7 @@ class PaymentsScreen extends ConsumerWidget {
               ),
             ),
 
-          // ── Resumen de cargos (loading / error / data) ──────────
+          // ── Resumen de cargos ───────────────────────────────────
           SliverToBoxAdapter(
             child: charges.when(
               loading: () => const Padding(
@@ -86,6 +106,113 @@ class PaymentsScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
               sliver: _ChargesList(charges: charges.valueOrNull ?? [], fmt: currencyFmt, colors: c),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Sección: plan de dispositivos ──────────────────────────────────────────
+
+class _DevicePlanSection extends StatelessWidget {
+  final PaymentConfig cfg;
+  final List<dynamic> devices;
+  final NumberFormat fmt;
+  const _DevicePlanSection({required this.cfg, required this.devices, required this.fmt});
+
+  DevicePlan? _activePlan() {
+    if (cfg.devicePlans.isEmpty) return null;
+    final count = devices.isNotEmpty ? devices.length : 1;
+    final sorted = [...cfg.devicePlans]..sort((a, b) => a.maxDevices.compareTo(b.maxDevices));
+    return sorted.firstWhere(
+      (p) => p.maxDevices >= count,
+      orElse: () => sorted.last,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final plan = _activePlan();
+    if (plan == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: c.primary.withOpacity(0.12), shape: BoxShape.circle),
+              child: Icon(Icons.devices_rounded, color: c.primary, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Text('Tu plan de acceso',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: c.textPrimary)),
+          ]),
+          const SizedBox(height: 14),
+          _InfoCard(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(plan.label,
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: c.textPrimary)),
+                        const SizedBox(height: 2),
+                        Text(
+                          devices.isEmpty
+                              ? 'Sin dispositivos registrados'
+                              : '${devices.length} dispositivo${devices.length == 1 ? '' : 's'} registrado${devices.length == 1 ? '' : 's'}',
+                          style: TextStyle(fontSize: 13, color: c.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(fmt.format(plan.monthlyAmount),
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: c.primary)),
+                      Text('/ mes', style: TextStyle(fontSize: 11, color: c.textMuted)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (devices.isNotEmpty) ...[
+              Divider(height: 1, color: c.border),
+              ...devices.asMap().entries.map((e) {
+                final dev = e.value as Map;
+                final name = dev['deviceName'] as String? ?? 'Dispositivo ${e.key + 1}';
+                final platform = dev['platform'] as String? ?? '';
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: Row(children: [
+                    Icon(
+                      platform == 'ios' ? Icons.phone_iphone_rounded : Icons.smartphone_rounded,
+                      color: c.primary,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(name, style: TextStyle(fontSize: 13, color: c.textPrimary)),
+                    ),
+                  ]),
+                );
+              }),
+            ],
+          ]),
+          const SizedBox(height: 4),
+          Text(
+            'Precio: ${fmt.format(plan.monthlyAmount)} × ${devices.isEmpty ? 1 : devices.length} dispositivo${(devices.isEmpty ? 1 : devices.length) == 1 ? '' : 's'}',
+            style: TextStyle(fontSize: 12, color: c.textMuted),
+          ),
+          const Divider(height: 28),
         ],
       ),
     );
@@ -179,8 +306,9 @@ class _PaymentMethodsSection extends StatelessWidget {
     if (cfg.monthlyAmount > 0) {
       lines.add('');
       lines.add('Cuota mensual: ${fmt.format(cfg.monthlyAmount)}');
-      if (cfg.dueDayOfMonth > 0)
+      if (cfg.dueDayOfMonth > 0) {
         lines.add('Día de pago: ${cfg.dueDayOfMonth} de cada mes');
+      }
     }
     return lines.join('\n');
   }
@@ -215,8 +343,8 @@ class _PaymentMethodsSection extends StatelessWidget {
           ),
           const SizedBox(height: 14),
 
-          // Concepto + cuota mensual
-          if (cfg.monthlyAmount > 0) ...[
+          // Cuota mensual (solo si no hay planes por dispositivo)
+          if (cfg.monthlyAmount > 0 && cfg.devicePlans.isEmpty) ...[
             _InfoCard(children: [
               _InfoRow(label: 'Concepto', value: cfg.paymentConcept),
               _InfoRow(
@@ -251,61 +379,6 @@ class _PaymentMethodsSection extends StatelessWidget {
                 )),
           ],
 
-          // Cuotas adicionales
-          if (cfg.additionalCharges.isNotEmpty) ...[
-            Text(
-              'CUOTAS ADICIONALES',
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: c.textMuted,
-                  letterSpacing: 0.8),
-            ),
-            const SizedBox(height: 10),
-            _InfoCard(
-              children: cfg.additionalCharges.map((ch) {
-                final sub = [
-                  if (ch.dueDate != null && ch.dueDate!.isNotEmpty)
-                    'Vence: ${ch.dueDate}',
-                  if (ch.description != null && ch.description!.isNotEmpty)
-                    ch.description!,
-                ].join(' · ');
-                return Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(ch.name,
-                                style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: c.textPrimary)),
-                            if (sub.isNotEmpty)
-                              Text(sub,
-                                  style: TextStyle(
-                                      fontSize: 12, color: c.textMuted)),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        fmt.format(ch.amount),
-                        style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: c.warning),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 12),
-          ],
-
           const Divider(height: 32),
           Text(
             'MIS CARGOS PENDIENTES',
@@ -331,7 +404,6 @@ class _BankAccountCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     return _InfoCard(children: [
-      // Header: banco + botón compartir
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
         child: Row(

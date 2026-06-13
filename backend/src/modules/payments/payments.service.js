@@ -189,13 +189,21 @@ async function generateMonthlyCharges(tenantId, { month, year }) {
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
   const settings = (tenant?.settings && typeof tenant.settings === 'object') ? tenant.settings : {};
   const pc = (settings.paymentConfig && typeof settings.paymentConfig === 'object') ? settings.paymentConfig : {};
+
+  const rawPlans = Array.isArray(pc.devicePlans) ? pc.devicePlans : [];
+  const devicePlans = rawPlans.length > 0
+    ? [...rawPlans].sort((a, b) => a.maxDevices - b.maxDevices)
+    : null;
+
   const monthlyAmount = Number(pc.monthlyAmount) || 0;
-  if (monthlyAmount <= 0) throw { status: 400, message: 'Cuota mensual no configurada. Primero configúrala en Gestión de cobro.' };
+  if (!devicePlans && monthlyAmount <= 0) {
+    throw { status: 400, message: 'Cuota mensual no configurada. Primero configúrala en Gestión de cobro.' };
+  }
 
   const dueDayOfMonth = Number(pc.dueDayOfMonth) || 5;
   const paymentConcept = pc.paymentConcept || 'Cuota de mantenimiento';
   const monthName = new Date(year, month - 1, 1).toLocaleDateString('es-MX', { month: 'long' });
-  const description = `${paymentConcept} — ${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${year}`;
+  const capitalMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
   const dueDate = new Date(year, month - 1, dueDayOfMonth);
   const monthStart = new Date(year, month - 1, 1);
   const monthEnd = new Date(year, month, 0, 23, 59, 59, 999);
@@ -208,8 +216,32 @@ async function generateMonthlyCharges(tenantId, { month, year }) {
       where: { tenantId, unitId: unit.id, type: 'MONTHLY', dueDate: { gte: monthStart, lte: monthEnd } },
     });
     if (existing) { skipped++; continue; }
+
+    let amount;
+    let description;
+
+    if (devicePlans) {
+      const deviceCount = await prisma.deviceSession.count({
+        where: {
+          isActive: true,
+          user: { tenants: { some: { tenantId, unitId: unit.id, isActive: true } } },
+        },
+      });
+      const effectiveCount = deviceCount > 0 ? deviceCount : 1;
+      const plan = devicePlans.find(p => p.maxDevices >= effectiveCount)
+        || devicePlans[devicePlans.length - 1];
+      amount = Number(plan.monthlyAmount);
+      const dispText = effectiveCount === 1 ? '1 disp.' : `${effectiveCount} disp.`;
+      description = `${paymentConcept} — ${plan.label} (${dispText}) — ${capitalMonth} ${year}`;
+    } else {
+      amount = monthlyAmount;
+      description = `${paymentConcept} — ${capitalMonth} ${year}`;
+    }
+
+    if (amount <= 0) { skipped++; continue; }
+
     await prisma.charge.create({
-      data: { tenantId, unitId: unit.id, type: 'MONTHLY', amount: monthlyAmount, description, dueDate, isRecurring: false, status: 'PENDING' },
+      data: { tenantId, unitId: unit.id, type: 'MONTHLY', amount, description, dueDate, isRecurring: false, status: 'PENDING' },
     });
     created++;
   }

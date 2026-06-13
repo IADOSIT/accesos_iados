@@ -59,4 +59,13 @@ async function updateFCMToken(req, res) {
   }
 }
 
-module.exports = { login, register, refresh, changePassword, me, updateFCMToken };
+async function myDevices(req, res) {
+  try {
+    const devices = await authService.getMyDevices(req.user.id);
+    return success(res, devices);
+  } catch (err) {
+    return error(res, err.message, err.status || 500);
+  }
+}
+
+module.exports = { login, register, refresh, changePassword, me, updateFCMToken, myDevices };
