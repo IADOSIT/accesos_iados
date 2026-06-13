@@ -9,8 +9,14 @@ import '../../../shared/providers/tenant_config_provider.dart';
 import '../../../shared/providers/auth_provider.dart';
 
 final chargesProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
+  final auth = ref.watch(authProvider);
+  // Sin unidad asignada → el usuario no tiene cargos propios
+  if (auth.unitId == null) return [];
   final api = ref.watch(apiClientProvider);
-  final res = await api.get('/payments/charges', params: {'limit': '100'});
+  final res = await api.get('/payments/charges', params: {
+    'limit': '100',
+    'unitId': auth.unitId!,
+  });
   return res.data['data'] as List? ?? [];
 });
 
@@ -26,11 +32,43 @@ class PaymentsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
+    final auth = ref.watch(authProvider);
     final charges = ref.watch(chargesProvider);
     final devices = ref.watch(myDevicesProvider);
     final paymentCfg = ref.watch(tenantConfigProvider).valueOrNull?.paymentConfig;
-    final tenantName = ref.watch(authProvider).tenantName ?? '';
+    final tenantName = auth.tenantName ?? '';
     final currencyFmt = NumberFormat.currency(locale: 'es_MX', symbol: '\$');
+
+    // Admin/Guard sin unidad asignada → esta sección no aplica para su perfil
+    if (auth.unitId == null && !auth.isResident) {
+      return Scaffold(
+        backgroundColor: c.bgMain,
+        appBar: AppBar(title: const Text('Pagos')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.receipt_long_outlined, size: 56, color: c.textMuted),
+                const SizedBox(height: 16),
+                Text(
+                  'Esta sección muestra los cargos de tu unidad como residente.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 15, color: c.textPrimary, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Tu perfil de ${auth.isAdmin ? 'administrador' : 'guardia'} no tiene una unidad asignada.\nConsulta los cargos desde el portal web.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: c.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: c.bgMain,

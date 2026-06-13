@@ -22,6 +22,7 @@ class SecureStorage {
   static const _keyFCMToken = 'fcm_token';
   static const _keyMustChangePassword = 'must_change_password';
   static const _keyDeviceId = 'device_id';
+  static const _keyUnitId = 'unit_id';
 
   // En web usa SharedPreferences, en móvil usa FlutterSecureStorage
   Future<void> _write(String key, String value) async {
@@ -83,6 +84,9 @@ class SecureStorage {
 
   Future<void> saveDeviceId(String id) => _write(_keyDeviceId, id);
   Future<String?> getDeviceId() => _read(_keyDeviceId);
+
+  Future<void> saveUnitId(String id) => _write(_keyUnitId, id);
+  Future<String?> getUnitId() => _read(_keyUnitId);
 
   Future<void> saveMustChangePassword(bool value) => _write(_keyMustChangePassword, value ? '1' : '0');
   Future<bool> getMustChangePassword() async {

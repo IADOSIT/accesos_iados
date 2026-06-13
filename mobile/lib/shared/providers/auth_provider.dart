@@ -15,6 +15,7 @@ class AuthState {
   final String? tenantName;
   final String? tenantSlug;
   final String? role;
+  final String? unitId;
   final String? firstName;
   final String? lastName;
   final bool isLoading;
@@ -30,6 +31,7 @@ class AuthState {
     this.tenantName,
     this.tenantSlug,
     this.role,
+    this.unitId,
     this.firstName,
     this.lastName,
     this.isLoading = false,
@@ -54,6 +56,7 @@ class AuthState {
     String? tenantName,
     String? tenantSlug,
     String? role,
+    String? unitId,
     String? firstName,
     String? lastName,
     bool? isLoading,
@@ -68,6 +71,7 @@ class AuthState {
         tenantName: tenantName ?? this.tenantName,
         tenantSlug: tenantSlug ?? this.tenantSlug,
         role: role ?? this.role,
+        unitId: unitId ?? this.unitId,
         firstName: firstName ?? this.firstName,
         lastName: lastName ?? this.lastName,
         isLoading: isLoading ?? this.isLoading,
@@ -100,6 +104,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         _storage.getTenantSlug(),
         _storage.getFirstName(),
         _storage.getLastName(),
+        _storage.getUnitId(),
       ]);
       final mustChange = await _storage.getMustChangePassword();
       state = AuthState(
@@ -111,6 +116,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         tenantSlug: results[4],
         firstName: results[5],
         lastName: results[6],
+        unitId: results[7],
         mustChangePassword: mustChange,
       );
       _registerFCMToken(); // refrescar token en caso de que Firebase lo rotó
@@ -154,6 +160,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final tenantId = tenant['tenantId'] as String;
       final role = tenant['role'] as String;
       final tenantName = tenant['tenantName'] as String?;
+      final unitId = tenant['unitId'] as String?;
       final firstName = user['firstName'] as String?;
       final lastName = user['lastName'] as String?;
       final mustChange = data['mustChangePassword'] == true;
@@ -168,6 +175,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         firstName: firstName,
         lastName: lastName,
       );
+      if (unitId != null) await _storage.saveUnitId(unitId);
       await _storage.saveMustChangePassword(mustChange);
 
       state = AuthState(
@@ -175,6 +183,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         userId: user['id'] as String,
         tenantId: tenantId,
         role: role,
+        unitId: unitId,
         tenantName: tenantName,
         tenantSlug: null,
         firstName: firstName,
