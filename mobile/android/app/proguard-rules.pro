@@ -25,6 +25,10 @@
 -keepattributes Signature
 -keepattributes Exceptions
 
+# ── Google Play Core (Flutter lo referencia internamente, no lo usamos) ────
+-dontwarn com.google.android.play.core.**
+-keep class com.google.android.play.core.** { *; }
+
 # ── Evitar warnings de dependencias transitivas ────────────────────────────
 -dontwarn org.bouncycastle.**
 -dontwarn org.conscrypt.**
