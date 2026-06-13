@@ -67,6 +67,12 @@ jobs:
             --dart-define=API_URL=https://accesodigitalapi.iados.mx/api \
             --dart-define=PORTAL_URL=https://accesodigital.iados.mx
 
+      - name: Build AAB (Play Store)
+        run: |
+          flutter build appbundle --release \
+            --dart-define=API_URL=https://accesodigitalapi.iados.mx/api \
+            --dart-define=PORTAL_URL=https://accesodigital.iados.mx
+
       - name: Crear carpeta de releases en VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -126,4 +132,11 @@ jobs:
         with:
           name: AccesoDigital-${{ steps.version.outputs.version }}
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 90
+
+      - name: Subir AAB como artifact (Play Store)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AccesoDigital-${{ steps.version.outputs.version }}-PlayStore
+          path: mobile/build/app/outputs/bundle/release/app-release.aab
           retention-days: 90

@@ -80,7 +80,7 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
 
         final c = context.colors;
         return GestureDetector(
-          onTap: () => _openDownload(info.downloadUrl),
+          onTap: () => _showInstallDialog(context, info),
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -122,6 +122,42 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
     );
   }
 
+  void _showInstallDialog(BuildContext context, AppVersionInfo info) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Actualización disponible'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Versión ${info.version} lista para instalar.'),
+            if (info.releaseNotes.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(info.releaseNotes, style: const TextStyle(fontSize: 13)),
+            ],
+            const SizedBox(height: 16),
+            _PlayProtectHint(),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Después'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _openDownload(info.downloadUrl);
+            },
+            icon: const Icon(Icons.download_rounded),
+            label: const Text('Descargar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showMandatoryDialog(BuildContext context, AppVersionInfo info) {
     showDialog(
       context: context,
@@ -139,13 +175,15 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
                 const SizedBox(height: 12),
                 Text(info.releaseNotes, style: const TextStyle(fontSize: 13)),
               ],
+              const SizedBox(height: 16),
+              _PlayProtectHint(),
             ],
           ),
           actions: [
             FilledButton.icon(
               onPressed: () => _openDownload(info.downloadUrl),
               icon: const Icon(Icons.download_rounded),
-              label: const Text('Descargar ahora'),
+              label: const Text('Descargar e instalar'),
             ),
           ],
         ),
@@ -159,5 +197,77 @@ class _UpdateBannerState extends ConsumerState<UpdateBanner> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
+  }
+}
+
+// ── Guía de Play Protect ────────────────────────────────────────────────────
+
+class _PlayProtectHint extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.shield_outlined, color: Colors.amber.shade700, size: 16),
+            const SizedBox(width: 6),
+            Text(
+              'Si Android bloquea la instalación:',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.amber.shade800,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          _Step('1', 'Toca "Más información" en la advertencia de Play Protect'),
+          _Step('2', 'Toca "Instalar de todas formas"'),
+          _Step('3', 'Confirma que confías en la fuente'),
+        ],
+      ),
+    );
+  }
+}
+
+class _Step extends StatelessWidget {
+  final String number;
+  final String text;
+  const _Step(this.number, this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 18,
+            height: 18,
+            margin: const EdgeInsets.only(top: 1, right: 6),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade700,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(number,
+                  style: const TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white)),
+            ),
+          ),
+          Expanded(
+            child: Text(text, style: TextStyle(fontSize: 12, color: Colors.amber.shade900)),
+          ),
+        ],
+      ),
+    );
   }
 }
